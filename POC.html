@@ -1,0 +1,1316 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Secure Score Control Aligner (Graph + Graph Auth + Enable Jobs)</title>
+
+  <!-- Bootstrap 5.3 -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- vis-network -->
+  <link href="https://cdn.jsdelivr.net/npm/vis-network@9.1.9/styles/vis-network.min.css" rel="stylesheet">
+
+  <style>
+    :root{
+      --bg0:#0b1220;
+      --border: rgba(255,255,255,.08);
+      --txt: rgba(255,255,255,.92);
+      --muted: rgba(255,255,255,.65);
+    }
+    body{
+      background: radial-gradient(1200px 700px at 10% 10%, #14264b 0%, var(--bg0) 45%, #060a12 100%);
+      color: var(--txt);
+    }
+    .navbar{
+      backdrop-filter: blur(10px);
+      background: rgba(8, 12, 22, .55) !important;
+      border-bottom: 1px solid var(--border);
+    }
+    .glass{
+      background: rgba(15, 26, 46, .72);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.35);
+    }
+    .soft{
+      background: rgba(255,255,255,.02);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+    }
+    .kpi{
+      font-size: .85rem;
+      color: var(--muted);
+    }
+    .kpi strong{
+      font-size: 1.05rem;
+      color: var(--txt);
+      display:block;
+      margin-top:.15rem;
+    }
+    #graph{
+      height: calc(100vh - 220px);
+      min-height: 520px;
+      border-radius: 18px;
+    }
+    .control-row{
+      border-bottom: 1px solid rgba(255,255,255,.06);
+      padding: .55rem .25rem;
+    }
+    .control-row:last-child{ border-bottom:none; }
+    .tiny{
+      font-size: .78rem;
+      color: var(--muted);
+    }
+    .badge-soft{
+      background: rgba(110,168,254,.14);
+      border: 1px solid rgba(110,168,254,.22);
+      color: #cfe2ff;
+      font-weight: 600;
+    }
+    .badge-warn{
+      background: rgba(255,193,7,.14);
+      border: 1px solid rgba(255,193,7,.22);
+      color: #ffe8a1;
+      font-weight: 600;
+    }
+    .badge-ok{
+      background: rgba(25,135,84,.14);
+      border: 1px solid rgba(25,135,84,.22);
+      color: #b7f7d5;
+      font-weight: 600;
+    }
+    .badge-bad{
+      background: rgba(220,53,69,.14);
+      border: 1px solid rgba(220,53,69,.22);
+      color: #ffb3bd;
+      font-weight: 600;
+    }
+    .form-control, .form-select{
+      background: rgba(255,255,255,.03);
+      border: 1px solid var(--border);
+      color: var(--txt);
+    }
+    .form-control::placeholder{ color: rgba(255,255,255,.45); }
+    .form-check-input{
+      background-color: rgba(255,255,255,.06);
+      border-color: rgba(255,255,255,.18);
+    }
+    .btn-primary{
+      background: linear-gradient(180deg, rgba(110,168,254,1) 0%, rgba(70,130,220,1) 100%);
+      border: none;
+    }
+    .btn-outline-light{
+      border-color: rgba(255,255,255,.2);
+      color: rgba(255,255,255,.9);
+    }
+    .scrollpane{
+      max-height: calc(100vh - 520px);
+      overflow: auto;
+      padding-right: .25rem;
+    }
+    @media (min-width: 1200px){
+      .scrollpane{ max-height: calc(100vh - 610px); }
+    }
+    .scrollpane::-webkit-scrollbar{ width: 10px; }
+    .scrollpane::-webkit-scrollbar-thumb{
+      background: rgba(255,255,255,.12);
+      border-radius: 999px;
+    }
+    .scrollpane::-webkit-scrollbar-track{
+      background: rgba(255,255,255,.04);
+      border-radius: 999px;
+    }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+
+    /* ===== App layout with collapsible sidebar ===== */
+    .app-wrap{
+      display: grid;
+      grid-template-columns: 420px 1fr;
+      gap: 12px;
+      padding: 12px;
+    }
+    @media (max-width: 1199.98px){
+      .app-wrap{ grid-template-columns: 1fr; }
+    }
+
+    .sidebar-shell{
+      transition: width .22s ease, transform .22s ease;
+      overflow: hidden;
+    }
+    .sidebar-collapsed{
+      width: 64px;
+    }
+    .sidebar-wide{
+      transition: opacity .18s ease, transform .18s ease;
+    }
+    .sidebar-collapsed .sidebar-wide{
+      opacity: 0;
+      pointer-events: none;
+      transform: translateX(-12px);
+    }
+    .sidebar-rail{
+      display: none;
+      flex-direction: column;
+      gap: 10px;
+      padding: 10px;
+    }
+    .sidebar-collapsed .sidebar-rail{
+      display: flex;
+    }
+    .rail-btn{
+      display:flex; align-items:center; justify-content:center;
+      width: 44px; height: 44px;
+      border-radius: 12px;
+      background: rgba(255,255,255,.04);
+      border: 1px solid var(--border);
+      color: rgba(255,255,255,.85);
+      cursor: pointer;
+      user-select: none;
+    }
+    .rail-btn:hover{ background: rgba(255,255,255,.06); }
+
+    /* When sidebar is collapsed, let the graph breathe */
+    .sidebar-collapsed ~ .main-shell #graph{
+      height: calc(100vh - 190px);
+      min-height: 640px;
+    }
+
+    /* Accordion look inside sidebar */
+    .acc-btn{
+      width: 100%;
+      text-align: left;
+      border: 0;
+      background: transparent;
+      color: var(--txt);
+      padding: .6rem .75rem;
+      border-radius: 12px;
+      display:flex;
+      align-items:center;
+      justify-content: space-between;
+      gap: .5rem;
+    }
+    .acc-btn:hover{ background: rgba(255,255,255,.03); }
+    .acc-caret{
+      opacity:.75;
+      transition: transform .15s ease;
+    }
+    .acc-btn[aria-expanded="true"] .acc-caret{
+      transform: rotate(180deg);
+    }
+    .acc-body{
+      padding: .5rem .75rem .75rem .75rem;
+    }
+  </style>
+</head>
+
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark sticky-top">
+  <div class="container-fluid px-3">
+    <button id="btnToggleSidebar" class="btn btn-sm btn-outline-light me-2">☰</button>
+    <span class="navbar-brand fw-semibold">Securityzator</span>
+
+    <div class="ms-auto d-flex gap-2 align-items-center">
+      <span class="tiny d-none d-md-inline">Graph: Category ↔ Product ↔ Control</span>
+      <button id="btnFit" class="btn btn-sm btn-outline-light">Fit graph</button>
+    </div>
+  </div>
+</nav>
+
+<div class="app-wrap">
+  <!-- SIDEBAR -->
+  <div id="sidebarShell" class="sidebar-shell">
+    <div class="glass p-2 h-100">
+      <!-- Slim rail when collapsed -->
+      <div class="sidebar-rail">
+        <div class="rail-btn" id="railControls" title="Controls">C</div>
+        <div class="rail-btn" id="railAuth" title="Auth">A</div>
+        <div class="rail-btn" id="railJobs" title="Jobs">J</div>
+        <div class="rail-btn" id="railFilters" title="Filters">F</div>
+        <div class="rail-btn" id="railList" title="List">L</div>
+      </div>
+
+      <!-- Full sidebar content -->
+      <div class="sidebar-wide p-2">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <div>
+            <div class="fw-semibold">Controls</div>
+            <div class="tiny">Load CSV or pull via Graph. Select controls. Run jobs.</div>
+          </div>
+          <div class="d-flex gap-2">
+            <button id="btnSelectAll" class="btn btn-sm btn-outline-light">Select all</button>
+            <button id="btnSelectNone" class="btn btn-sm btn-outline-light">None</button>
+          </div>
+        </div>
+
+        <!-- Accordion: Loader -->
+        <div class="soft mb-2">
+          <button class="acc-btn" type="button" data-bs-toggle="collapse" data-bs-target="#secLoader" aria-expanded="true">
+            <span class="fw-semibold">Loader</span>
+            <span class="acc-caret">▾</span>
+          </button>
+          <div id="secLoader" class="collapse show">
+            <div class="acc-body">
+              <div class="row g-2 align-items-end">
+                <div class="col-12 col-lg-7">
+                  <label class="form-label tiny mb-1">Load CSV</label>
+                  <input id="fileInput" class="form-control form-control-sm" type="file" accept=".csv">
+                  <div class="tiny mt-1">Tries auto-load from: <span class="mono">./Microsoft Secure Score - Microsoft Defender.csv</span></div>
+                </div>
+                <div class="col-12 col-lg-5">
+                  <button id="btnReload" class="btn btn-sm btn-outline-light w-100">Reload</button>
+                  <div class="tiny mt-1 text-center" id="loadStatus">No data loaded yet.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Accordion: Graph Auth -->
+        <div class="soft mb-2">
+          <button class="acc-btn" type="button" data-bs-toggle="collapse" data-bs-target="#secAuth" aria-expanded="true">
+            <span class="fw-semibold d-flex align-items-center gap-2">
+              <span>Graph Auth</span>
+              <span id="authState" class="badge badge-soft">Signed out</span>
+            </span>
+            <span class="acc-caret">▾</span>
+          </button>
+          <div id="secAuth" class="collapse show">
+            <div class="acc-body">
+              <div class="tiny">SPA login via MSAL (PKCE). No client secret in browser.</div>
+              <div class="tiny mt-1">Host: <span class="mono">http://localhost/securityzator</span></div>
+
+              <div class="row g-2 mt-2">
+                <div class="col-12">
+                  <label class="form-label tiny mb-1">Tenant ID</label>
+                  <input id="cfgTenantId" class="form-control form-control-sm" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx or common">
+                </div>
+                <div class="col-12">
+                  <label class="form-label tiny mb-1">Client ID</label>
+                  <input id="cfgClientId" class="form-control form-control-sm" placeholder="App (client) ID">
+                </div>
+                <div class="col-12">
+                  <label class="form-label tiny mb-1">Redirect URI</label>
+                  <input id="cfgRedirectUri" class="form-control form-control-sm" placeholder="http://localhost/securityzator/">
+                  <div class="tiny mt-1">Set this EXACT value as SPA Redirect URI in app registration (include trailing slash).</div>
+                </div>
+                <div class="col-12">
+                  <label class="form-label tiny mb-1">Scopes (delegated)</label>
+                  <input id="cfgScopes" class="form-control form-control-sm"
+                         value="User.Read SecurityEvents.Read.All Policy.Read.All Policy.ReadWrite.ConditionalAccess Group.Read.All Directory.Read.All">
+                </div>
+
+                <div class="col-12 d-grid gap-2 mt-2">
+                  <button id="btnSaveAuthCfg" class="btn btn-outline-light">Save config</button>
+                  <button id="btnLogin" class="btn btn-primary">Login</button>
+                  <button id="btnLogout" class="btn btn-outline-light">Logout</button>
+                  <button id="btnPullGraph" class="btn btn-outline-light">Pull controls from Graph (catalog)</button>
+                </div>
+
+                <div class="col-12">
+                  <div class="tiny mt-2" id="authMsg"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Accordion: Quick Win Job -->
+        <div class="soft mb-2">
+          <button class="acc-btn" type="button" data-bs-toggle="collapse" data-bs-target="#secJobs" aria-expanded="true">
+            <span class="fw-semibold">Quick win (user posture)</span>
+            <span class="acc-caret">▾</span>
+          </button>
+          <div id="secJobs" class="collapse show">
+            <div class="acc-body">
+              <div class="tiny">Creates CA policy “Block legacy authentication” in <b>Report-only</b>.</div>
+              <div class="d-grid gap-2 mt-2">
+                <button id="btnQuickWin" class="btn btn-outline-light">Run quick win job</button>
+              </div>
+              <div class="tiny mt-2">
+                Needs: Steamroll group Object ID (include) and optional Breakglass exclusion group Object ID.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Accordion: KPIs -->
+        <div class="soft mb-2">
+          <button class="acc-btn" type="button" data-bs-toggle="collapse" data-bs-target="#secKpis" aria-expanded="true">
+            <span class="fw-semibold">KPIs</span>
+            <span class="acc-caret">▾</span>
+          </button>
+          <div id="secKpis" class="collapse show">
+            <div class="acc-body">
+              <div class="row g-2">
+                <div class="col-6">
+                  <div class="soft p-2">
+                    <div class="kpi">Total controls<strong id="kpiTotal">—</strong></div>
+                  </div>
+                </div>
+                <div class="col-6">
+                  <div class="soft p-2">
+                    <div class="kpi">Selected<strong id="kpiSelected">—</strong></div>
+                  </div>
+                </div>
+                <div class="col-6">
+                  <div class="soft p-2">
+                    <div class="kpi">Aligner size<strong id="kpiAlignerSize">—</strong></div>
+                  </div>
+                </div>
+                <div class="col-6">
+                  <div class="soft p-2">
+                    <div class="kpi">Aligners needed<strong id="kpiAlignersNeeded">—</strong></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Accordion: Filters -->
+        <div class="soft mb-2">
+          <button class="acc-btn" type="button" data-bs-toggle="collapse" data-bs-target="#secFilters" aria-expanded="true">
+            <span class="fw-semibold">Filters</span>
+            <span class="acc-caret">▾</span>
+          </button>
+          <div id="secFilters" class="collapse show">
+            <div class="acc-body">
+              <div class="row g-2">
+                <div class="col-12">
+                  <label class="form-label tiny mb-1">Search</label>
+                  <input id="txtSearch" class="form-control form-control-sm" placeholder="Type to filter controls...">
+                </div>
+                <div class="col-6">
+                  <label class="form-label tiny mb-1">Category</label>
+                  <select id="selCategory" class="form-select form-select-sm">
+                    <option value="">All</option>
+                  </select>
+                </div>
+                <div class="col-6">
+                  <label class="form-label tiny mb-1">Status</label>
+                  <select id="selStatus" class="form-select form-select-sm">
+                    <option value="">All</option>
+                  </select>
+                </div>
+                <div class="col-12">
+                  <label class="form-label tiny mb-1">Aligner size (bundle capacity)</label>
+                  <input id="rngAligner" class="form-range" type="range" min="5" max="40" step="1" value="12">
+                  <div class="d-flex justify-content-between tiny">
+                    <span>5</span><span>12</span><span>40</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="d-grid gap-2 mt-2">
+                <button id="btnEnablePlan" class="btn btn-primary btn-lg">Enable (Plan flag only)</button>
+                <button id="btnShowAligners" class="btn btn-outline-light">Show aligner breakdown</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Accordion: Control list -->
+        <div class="soft">
+          <button class="acc-btn" type="button" data-bs-toggle="collapse" data-bs-target="#secList" aria-expanded="true">
+            <span class="fw-semibold">Controls list</span>
+            <span class="acc-caret">▾</span>
+          </button>
+          <div id="secList" class="collapse show">
+            <div class="acc-body pt-0">
+              <div id="controlList" class="scrollpane px-1 pb-1"></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main-shell">
+    <div class="glass p-3">
+      <div class="d-flex align-items-center justify-content-between mb-2">
+        <div>
+          <div class="fw-semibold">Graph view</div>
+          <div class="tiny">Click a control node (#rank) to toggle selection. Hover shows details.</div>
+        </div>
+        <div class="d-flex gap-2">
+          <button id="btnOnlySelected" class="btn btn-sm btn-outline-light">Only selected</button>
+          <button id="btnAll" class="btn btn-sm btn-outline-light">Show all</button>
+        </div>
+      </div>
+
+      <div id="graph" class="soft"></div>
+
+      <div id="alignerPanel" class="soft p-3 mt-3 d-none">
+        <div class="d-flex justify-content-between align-items-center">
+          <div class="fw-semibold">Aligner breakdown</div>
+          <button id="btnCloseAligners" class="btn btn-sm btn-outline-light">Close</button>
+        </div>
+        <div class="tiny mt-1 mb-2">
+          Definition: 1 aligner = up to <span id="alignerSizeLabel"></span> controls.
+        </div>
+        <div id="alignerBreakdown" class="row g-2"></div>
+      </div>
+
+      <div class="soft p-3 mt-3">
+        <div class="fw-semibold">Job console</div>
+        <div class="tiny mt-1">Queue runs sequentially. Baseline throttle: 1 job step / 5 seconds + honors Retry-After.</div>
+        <pre id="jobConsole" class="mono tiny mb-0" style="white-space:pre-wrap; min-height:120px; max-height:220px; overflow:auto;"></pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- libs -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.19.0/lib/msal-browser.min.js"></script>
+
+<script>
+  // ====== State ======
+  let rawRows = [];
+  let selectedIds = new Set();
+  let onlySelectedMode = false;
+
+  let network = null;
+  let visNodes = null;
+  let visEdges = null;
+
+  // ====== Utils ======
+  const $ = (id) => document.getElementById(id);
+  function safeStr(v){ return (v ?? "").toString().trim(); }
+
+  function logJob(line){
+    const ts = new Date().toISOString().replace("T"," ").replace("Z","");
+    $("jobConsole").textContent += `[${ts}] ${line}\n`;
+    $("jobConsole").scrollTop = $("jobConsole").scrollHeight;
+  }
+
+  function parsePoints(pointsAchieved){
+    const s = safeStr(pointsAchieved);
+    const m = s.match(/^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)$/);
+    if(!m) return { ach: null, max: null };
+    return { ach: Number(m[1]), max: Number(m[2]) };
+  }
+
+  function statusBadgeClass(status){
+    const s = safeStr(status).toLowerCase();
+    if(s.includes("to address")) return "badge-bad";
+    if(s.includes("completed") || s.includes("resolved")) return "badge-ok";
+    if(s.includes("in progress")) return "badge-warn";
+    return "badge-soft";
+  }
+
+  function nodeColorForType(type){
+    switch(type){
+      case "category": return { background: "rgba(110,168,254,.20)", border: "rgba(110,168,254,.45)" };
+      case "product":  return { background: "rgba(25,135,84,.16)",  border: "rgba(25,135,84,.40)" };
+      case "control":  return { background: "rgba(255,255,255,.10)", border: "rgba(255,255,255,.22)" };
+      default:         return { background: "rgba(255,255,255,.08)", border: "rgba(255,255,255,.18)" };
+    }
+  }
+
+  function getAlignerSize(){ return Number($("rngAligner").value); }
+  function computeAlignersNeeded(selectedCount){
+    const size = getAlignerSize();
+    return size > 0 ? Math.ceil(selectedCount / size) : 0;
+  }
+
+  function trunc(s, n){
+    s = safeStr(s);
+    return s.length > n ? (s.slice(0, n-1) + "…") : s;
+  }
+  function escapeHtml(s){
+    return safeStr(s)
+      .replaceAll("&","&amp;")
+      .replaceAll("<","&lt;")
+      .replaceAll(">","&gt;")
+      .replaceAll('"',"&quot;")
+      .replaceAll("'","&#039;");
+  }
+  function escapeHtmlAttr(s){ return escapeHtml(s); }
+
+  function makeTooltipEl(r){
+    const wrap = document.createElement("div");
+    wrap.style.maxWidth = "420px";
+    wrap.innerHTML = `
+      <div><b>#${escapeHtml(r.rank)}</b> ${escapeHtml(r.action)}</div>
+      <div style="margin-top:6px"><b>Status:</b> ${escapeHtml(r.status)}</div>
+      <div><b>Category:</b> ${escapeHtml(r.category)}</div>
+      <div><b>Product:</b> ${escapeHtml(r.product)}</div>
+      <div><b>Impact:</b> ${escapeHtml(r.impact || "—")}</div>
+    `;
+    return wrap;
+  }
+
+  // ====== CSV loading ======
+  async function tryAutoLoad(){
+    const url = "./Microsoft Secure Score - Microsoft Defender.csv";
+    $("loadStatus").textContent = "Trying to auto-load CSV...";
+    try{
+      const res = await fetch(url, { cache: "no-store" });
+      if(!res.ok) throw new Error("HTTP " + res.status);
+      const text = await res.text();
+      loadFromCsvText(text, "Auto-loaded from local path");
+    }catch(e){
+      $("loadStatus").textContent = "Auto-load failed (use file picker), or pull via Graph.";
+    }
+  }
+
+  function loadFromFile(file){
+    const reader = new FileReader();
+    reader.onload = () => loadFromCsvText(reader.result, "Loaded from file picker");
+    reader.readAsText(file);
+  }
+
+  function loadFromCsvText(csvText, statusLabel){
+    Papa.parse(csvText, {
+      header: true,
+      skipEmptyLines: true,
+      complete: (results) => {
+        const rows = results.data || [];
+        rawRows = rows.map((r, idx) => {
+          const rank = safeStr(r["Rank"]) || (idx+1).toString();
+          const action = safeStr(r["Recommended action"]);
+          const category = safeStr(r["Category"]) || "Uncategorized";
+          const product = safeStr(r["Product"]) || "Unknown product";
+          const status = safeStr(r["Status"]) || "Unknown";
+          const impact = safeStr(r["Score impact"]);
+          const points = safeStr(r["Points achieved"]);
+          const regressed = safeStr(r["Regressed"]);
+          const haveLicense = safeStr(r["Have license?"]);
+          const lastSynced = safeStr(r["Last synced "]) || safeStr(r["Last synced"]);
+
+          const id = "ctrl:" + rank;
+          const p = parsePoints(points);
+
+          return {
+            id,
+            rank: Number(rank) || (idx+1),
+            action,
+            category,
+            product,
+            status,
+            impact,
+            pointsAchieved: p.ach,
+            pointsMax: p.max,
+            regressed,
+            haveLicense,
+            lastSynced,
+            enabledPlanned: false,
+            playbookId: null
+          };
+        });
+
+        selectedIds = new Set();
+        buildFilterOptions();
+        renderControlList();
+        buildGraph();
+        refreshKPIs();
+
+        $("loadStatus").textContent = `${statusLabel}. ${rawRows.length} controls loaded.`;
+      }
+    });
+  }
+
+  // ====== Filters/UI ======
+  function getFilteredRows(){
+    const q = safeStr($("txtSearch").value).toLowerCase();
+    const cat = safeStr($("selCategory").value);
+    const st  = safeStr($("selStatus").value);
+
+    return rawRows.filter(r => {
+      if(cat && r.category !== cat) return false;
+      if(st  && r.status !== st) return false;
+      if(q){
+        const blob = (r.action + " " + r.product + " " + r.category + " " + r.status).toLowerCase();
+        if(!blob.includes(q)) return false;
+      }
+      if(onlySelectedMode && !selectedIds.has(r.id)) return false;
+      return true;
+    }).sort((a,b) => a.rank - b.rank);
+  }
+
+  function buildFilterOptions(){
+    const cats = Array.from(new Set(rawRows.map(r => r.category))).sort();
+    const sts  = Array.from(new Set(rawRows.map(r => r.status))).sort();
+
+    $("selCategory").innerHTML = `<option value="">All</option>` + cats.map(c => `<option value="${escapeHtmlAttr(c)}">${escapeHtml(c)}</option>`).join("");
+    $("selStatus").innerHTML   = `<option value="">All</option>` + sts.map(s => `<option value="${escapeHtmlAttr(s)}">${escapeHtml(s)}</option>`).join("");
+  }
+
+  function renderControlList(){
+    const rows = getFilteredRows();
+    const host = $("controlList");
+
+    if(!rawRows.length){
+      host.innerHTML = `<div class="tiny p-2">Load a CSV or pull controls via Graph.</div>`;
+      return;
+    }
+
+    host.innerHTML = rows.map(r => {
+      const checked = selectedIds.has(r.id) ? "checked" : "";
+      const badgeCls = statusBadgeClass(r.status);
+      const points = (r.pointsAchieved != null && r.pointsMax != null) ? `${r.pointsAchieved}/${r.pointsMax}` : "—";
+      const planned = r.enabledPlanned ? `<span class="badge badge-soft ms-2">Planned</span>` : "";
+      return `
+        <div class="control-row">
+          <div class="d-flex gap-2">
+            <div class="pt-1">
+              <input class="form-check-input" type="checkbox" data-id="${escapeHtmlAttr(r.id)}" ${checked}>
+            </div>
+            <div class="flex-grow-1">
+              <div class="fw-semibold" style="line-height:1.15">
+                #${r.rank} — ${escapeHtml(r.action || "(No action text)")}
+              </div>
+              <div class="tiny mt-1">
+                <span class="badge ${badgeCls}">${escapeHtml(r.status)}</span>
+                <span class="badge badge-soft ms-1">${escapeHtml(r.category)}</span>
+                <span class="badge badge-soft ms-1">${escapeHtml(r.product)}</span>
+                ${planned}
+              </div>
+              <div class="tiny mt-1">
+                Impact: <span class="text-light">${escapeHtml(r.impact || "—")}</span>
+                &nbsp;|&nbsp; Points: <span class="text-light">${escapeHtml(points)}</span>
+                &nbsp;|&nbsp; License: <span class="text-light">${escapeHtml(r.haveLicense || "—")}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    host.querySelectorAll('input[type="checkbox"][data-id]').forEach(cb => {
+      cb.addEventListener("change", (e) => {
+        const id = e.target.getAttribute("data-id");
+        if(e.target.checked) selectedIds.add(id);
+        else selectedIds.delete(id);
+        refreshKPIs();
+        updateGraphSelectionHighlight();
+      });
+    });
+  }
+
+  function refreshKPIs(){
+    $("kpiTotal").textContent = rawRows.length ? rawRows.length.toString() : "—";
+    $("kpiSelected").textContent = rawRows.length ? selectedIds.size.toString() : "—";
+    $("kpiAlignerSize").textContent = rawRows.length ? getAlignerSize().toString() : "—";
+    $("kpiAlignersNeeded").textContent = rawRows.length ? computeAlignersNeeded(selectedIds.size).toString() : "—";
+    $("alignerSizeLabel").textContent = getAlignerSize().toString();
+  }
+
+  // ====== Graph ======
+  function buildGraph(){
+    const container = $("graph");
+    container.innerHTML = "";
+    if(!rawRows.length) return;
+
+    const categories = new Map();
+    const products = new Map();
+
+    const nodes = [];
+    const edges = [];
+
+    function ensureNode(map, key, type){
+      if(map.has(key)) return map.get(key);
+      const id = `${type}:${key}`;
+      map.set(key, id);
+      nodes.push({
+        id,
+        label: key,
+        group: type,
+        shape: "dot",
+        size: type === "product" ? 18 : (type === "category" ? 22 : 10),
+        color: nodeColorForType(type),
+        font: { color: "rgba(255,255,255,.88)" }
+      });
+      return id;
+    }
+
+    rawRows.forEach(r => {
+      ensureNode(categories, r.category, "category");
+      ensureNode(products, r.product, "product");
+    });
+
+    rawRows.forEach(r => {
+      const ctrlId = r.id;
+      nodes.push({
+        id: ctrlId,
+        label: `#${r.rank}`,
+        title: makeTooltipEl(r),
+        group: "control",
+        shape: "dot",
+        size: 10,
+        color: nodeColorForType("control"),
+        font: { color: "rgba(255,255,255,.88)" }
+      });
+
+      edges.push({ from: ctrlId, to: categories.get(r.category), width: 1, color: { color: "rgba(255,255,255,.18)" } });
+      edges.push({ from: ctrlId, to: products.get(r.product), width: 1, color: { color: "rgba(255,255,255,.18)" } });
+    });
+
+    visNodes = new vis.DataSet(nodes);
+    visEdges = new vis.DataSet(edges);
+
+    network = new vis.Network(container, { nodes: visNodes, edges: visEdges }, {
+      autoResize: true,
+      physics: {
+        enabled: true,
+        solver: "forceAtlas2Based",
+        forceAtlas2Based: { gravitationalConstant: -28, centralGravity: 0.02, springLength: 130, springConstant: 0.08, damping: 0.5 },
+        stabilization: { iterations: 180, updateInterval: 25 }
+      },
+      interaction: { hover: true, tooltipDelay: 80 }
+    });
+
+    updateGraphSelectionHighlight();
+
+    network.on("click", (params) => {
+      const ids = params.nodes || [];
+      if(!ids.length) return;
+      const id = ids[0];
+      if(id.startsWith("ctrl:")){
+        if(selectedIds.has(id)) selectedIds.delete(id);
+        else selectedIds.add(id);
+        renderControlList();
+        refreshKPIs();
+        updateGraphSelectionHighlight();
+      }
+    });
+
+    // Fit after build for first paint
+    setTimeout(() => { tryFitGraph(220); }, 0);
+  }
+
+  function updateGraphSelectionHighlight(){
+    if(!visNodes || !rawRows.length) return;
+
+    const updates = [];
+    rawRows.forEach(r => {
+      const isSel = selectedIds.has(r.id);
+      const planned = r.enabledPlanned;
+
+      let color = nodeColorForType("control");
+      let size = 10;
+
+      if(planned){
+        color = { background: "rgba(110,168,254,.28)", border: "rgba(110,168,254,.70)" };
+        size = 12;
+      }
+      if(isSel){
+        color = { background: "rgba(255,255,255,.18)", border: "rgba(255,255,255,.75)" };
+        size = 14;
+      }
+
+      updates.push({ id: r.id, color, size, title: makeTooltipEl(r) });
+    });
+
+    visNodes.update(updates);
+  }
+
+  // ====== Aligner Breakdown ======
+  function showAlignerBreakdown(){
+    const size = getAlignerSize();
+    const selected = rawRows.filter(r => selectedIds.has(r.id)).sort((a,b) => a.rank - b.rank);
+
+    const aligners = [];
+    for(let i=0; i<selected.length; i+=size){
+      aligners.push(selected.slice(i, i+size));
+    }
+
+    $("alignerSizeLabel").textContent = size.toString();
+
+    const host = $("alignerBreakdown");
+    if(!selected.length){
+      host.innerHTML = `<div class="tiny">Nothing selected.</div>`;
+    }else{
+      host.innerHTML = aligners.map((bundle, idx) => {
+        const items = bundle.map(r => `
+          <div class="tiny" title="${escapeHtmlAttr(r.action)}">
+            <span class="badge badge-soft me-1">#${r.rank}</span>
+            ${escapeHtml(trunc(r.action, 90))}
+          </div>
+        `).join("");
+        return `
+          <div class="col-12 col-lg-6">
+            <div class="soft p-3">
+              <div class="d-flex justify-content-between align-items-center">
+                <div class="fw-semibold">Aligner ${idx+1}</div>
+                <div class="tiny">${bundle.length} controls</div>
+              </div>
+              <div class="mt-2">${items}</div>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    $("alignerPanel").classList.remove("d-none");
+  }
+
+  // ====== Auth config storage ======
+  const AUTH_CFG_KEY = "securityzator_auth_cfg_v1";
+  function loadAuthCfg(){
+    try { return JSON.parse(localStorage.getItem(AUTH_CFG_KEY) || "{}"); }
+    catch { return {}; }
+  }
+  function saveAuthCfg(cfg){
+    localStorage.setItem(AUTH_CFG_KEY, JSON.stringify(cfg));
+  }
+  function defaultRedirectUri(){
+    return "http://localhost/securityzator/";
+  }
+  function getAuthCfgFromUI(){
+    return {
+      tenantId: safeStr($("cfgTenantId").value) || "common",
+      clientId: safeStr($("cfgClientId").value),
+      redirectUri: safeStr($("cfgRedirectUri").value) || defaultRedirectUri(),
+      scopes: safeStr($("cfgScopes").value).split(/\s+/).filter(Boolean)
+    };
+  }
+  function applyAuthCfgToUI(cfg){
+    $("cfgTenantId").value = cfg.tenantId || "common";
+    $("cfgClientId").value = cfg.clientId || "";
+    $("cfgRedirectUri").value = cfg.redirectUri || defaultRedirectUri();
+    $("cfgScopes").value = (cfg.scopes || [
+      "User.Read",
+      "SecurityEvents.Read.All",
+      "Policy.Read.All",
+      "Policy.ReadWrite.ConditionalAccess",
+      "Group.Read.All",
+      "Directory.Read.All"
+    ]).join(" ");
+  }
+
+  // ====== MSAL client (initialize required) ======
+  let msalApp = null;
+  let activeAccount = null;
+  let msalInitialized = false;
+
+  function makeMsal(cfg){
+    if(!cfg.clientId) throw new Error("Client ID missing.");
+    const authority = `https://login.microsoftonline.com/${cfg.tenantId}`;
+    return new msal.PublicClientApplication({
+      auth: { clientId: cfg.clientId, authority, redirectUri: cfg.redirectUri },
+      cache: { cacheLocation: "localStorage", storeAuthStateInCookie: false }
+    });
+  }
+
+  function setAuthUI(stateText, badgeClass, msg){
+    $("authState").className = `badge ${badgeClass}`;
+    $("authState").textContent = stateText;
+    $("authMsg").textContent = msg || "";
+  }
+
+  async function ensureMsal(){
+    const cfg = loadAuthCfg();
+    applyAuthCfgToUI(cfg);
+
+    if(!cfg.clientId){
+      setAuthUI("Signed out", "badge-soft", "Provide tenant/client/redirect + login.");
+      return;
+    }
+
+    msalApp = makeMsal(cfg);
+    await msalApp.initialize();
+    msalInitialized = true;
+
+    const accts = msalApp.getAllAccounts();
+    if(accts.length){
+      activeAccount = accts[0];
+      msalApp.setActiveAccount(activeAccount);
+      setAuthUI("Signed in", "badge-ok", `Account: ${activeAccount.username}`);
+    } else {
+      setAuthUI("Signed out", "badge-soft", "Ready to login.");
+    }
+  }
+
+  async function loginPopup(){
+    const cfg = loadAuthCfg();
+    msalApp = makeMsal(cfg);
+    await msalApp.initialize();
+    msalInitialized = true;
+
+    const resp = await msalApp.loginPopup({ scopes: cfg.scopes });
+    activeAccount = resp.account;
+    msalApp.setActiveAccount(activeAccount);
+
+    setAuthUI("Signed in", "badge-ok", `Account: ${activeAccount.username}`);
+    logJob("Auth: signed in as " + activeAccount.username);
+  }
+
+  async function logout(){
+    if(!msalApp){
+      setAuthUI("Signed out", "badge-soft", "No MSAL instance.");
+      return;
+    }
+    if(!msalInitialized){
+      await msalApp.initialize();
+      msalInitialized = true;
+    }
+
+    const acc = msalApp.getActiveAccount() || activeAccount;
+    if(!acc){
+      setAuthUI("Signed out", "badge-soft", "No active account.");
+      return;
+    }
+    await msalApp.logoutPopup({ account: acc });
+    activeAccount = null;
+    setAuthUI("Signed out", "badge-soft", "Logged out.");
+    logJob("Auth: logged out");
+  }
+
+  async function getAccessToken(){
+    const cfg = loadAuthCfg();
+    if(!cfg.clientId) throw new Error("Auth config missing Client ID.");
+
+    if(!msalApp) msalApp = makeMsal(cfg);
+    if(!msalInitialized){
+      await msalApp.initialize();
+      msalInitialized = true;
+    }
+
+    const acc = msalApp.getActiveAccount() || activeAccount || msalApp.getAllAccounts()[0];
+    if(!acc) throw new Error("Not signed in.");
+
+    try{
+      const resp = await msalApp.acquireTokenSilent({ account: acc, scopes: cfg.scopes });
+      return resp.accessToken;
+    }catch{
+      const resp = await msalApp.acquireTokenPopup({ account: acc, scopes: cfg.scopes });
+      return resp.accessToken;
+    }
+  }
+
+  // ====== Graph fetch with 429 handling ======
+  async function graphFetch(method, path, body){
+    const token = await getAccessToken();
+    const url = "https://graph.microsoft.com/v1.0" + path;
+
+    const headers = { "Authorization": `Bearer ${token}`, "Accept": "application/json" };
+    if(body !== undefined) headers["Content-Type"] = "application/json";
+
+    for(let attempt=1; attempt<=5; attempt++){
+      const res = await fetch(url, {
+        method,
+        headers,
+        body: body === undefined ? undefined : JSON.stringify(body)
+      });
+
+      if(res.status === 429 || res.status === 503){
+        const ra = Number(res.headers.get("Retry-After") || "5");
+        logJob(`${method} ${path} throttled (${res.status}). Retry-After=${ra}s`);
+        await new Promise(r => setTimeout(r, Math.max(ra, 5) * 1000));
+        continue;
+      }
+
+      if(!res.ok){
+        const text = await res.text();
+        throw new Error(`${method} ${path} failed: ${res.status} ${res.statusText} :: ${text}`);
+      }
+
+      if(res.status === 204) return null;
+      return await res.json();
+    }
+
+    throw new Error(`${method} ${path} failed after retries.`);
+  }
+
+  // ====== Pull controls from Graph (catalog) ======
+  async function pullSecureScoreFromGraph(){
+    $("loadStatus").textContent = "Pulling Secure Score control profiles from Graph...";
+    logJob("Graph: GET /security/secureScoreControlProfiles");
+
+    const profiles = await graphFetch("GET", "/security/secureScoreControlProfiles?$top=999", undefined);
+
+    const items = (profiles?.value || []).map((p, idx) => {
+      const id = "ctrl:" + (p.id || idx);
+      const title = safeStr(p.title || p.controlCategory || p.id || ("Control " + (idx+1)));
+      return {
+        id,
+        rank: idx + 1,
+        action: title,
+        category: safeStr(p.controlCategory || "Unknown"),
+        product: safeStr(p.vendorInformation?.provider || "Microsoft"),
+        status: "Catalog",
+        impact: (p.maxScore != null ? ("maxScore " + p.maxScore) : "—"),
+        pointsAchieved: null,
+        pointsMax: (p.maxScore != null ? Number(p.maxScore) : null),
+        regressed: "",
+        haveLicense: "",
+        lastSynced: safeStr(p.lastModifiedDateTime || ""),
+        enabledPlanned: false,
+        playbookId: null,
+        graphProfileId: p.id
+      };
+    });
+
+    rawRows = items;
+    selectedIds = new Set();
+
+    buildFilterOptions();
+    renderControlList();
+    buildGraph();
+    refreshKPIs();
+
+    $("loadStatus").textContent = `Graph loaded. ${rawRows.length} control profiles.`;
+    logJob(`Graph: loaded ${rawRows.length} profiles`);
+  }
+
+  // ====== Async job queue ======
+  const jobQueue = [];
+  let jobRunning = false;
+
+  function enqueueJob(job){
+    jobQueue.push(job);
+    logJob(`Queue: added job "${job.name}" (len=${jobQueue.length})`);
+    runJobs();
+  }
+
+  async function runJobs(){
+    if(jobRunning) return;
+    jobRunning = true;
+
+    while(jobQueue.length){
+      const job = jobQueue.shift();
+      logJob(`Job start: ${job.name}`);
+      $("loadStatus").textContent = `Job running: ${job.name}`;
+
+      try{
+        const result = await job.run();
+        logJob(`Job done: ${job.name} :: ${JSON.stringify(result)}`);
+      }catch(e){
+        logJob(`Job failed: ${job.name} :: ${e.message}`);
+      }
+
+      await new Promise(r => setTimeout(r, 5000));
+    }
+
+    jobRunning = false;
+    $("loadStatus").textContent = "Idle.";
+  }
+
+  // ====== Quick win playbook: Block legacy auth (CA) ======
+  async function findCAPolicyByName(name){
+    const n = name.replaceAll("'","''");
+    const data = await graphFetch("GET", `/identity/conditionalAccess/policies?$filter=displayName eq '${n}'`, undefined);
+    return data?.value?.[0] || null;
+  }
+
+  async function createBlockLegacyAuthPolicy({includeGroupId, excludeGroupId}){
+    const payload = {
+      displayName: "SS-AUTO | Block legacy authentication",
+      state: "enabledForReportingButNotEnforced",
+      conditions: {
+        users: {
+          includeGroups: [includeGroupId],
+          excludeGroups: excludeGroupId ? [excludeGroupId] : []
+        },
+        applications: { includeApplications: ["All"] },
+        clientAppTypes: ["other"]
+      },
+      grantControls: { operator: "OR", builtInControls: ["block"] }
+    };
+    return await graphFetch("POST", "/identity/conditionalAccess/policies", payload);
+  }
+
+  function runQuickWinJob(){
+    enqueueJob({
+      name: "CA: Block legacy auth (report-only)",
+      run: async () => {
+        const includeGroupId = prompt("Steamroll group Object ID (includeGroups)?");
+        if(!includeGroupId) throw new Error("Aborted: missing steamroll group Object ID.");
+        const excludeGroupId = prompt("Breakglass exclusion group Object ID (optional)?") || "";
+
+        logJob("CA: checking existing policy by name...");
+        const existing = await findCAPolicyByName("SS-AUTO | Block legacy authentication");
+        if(existing){
+          return { alreadyExists: true, id: existing.id, state: existing.state };
+        }
+
+        logJob("CA: creating policy (report-only)...");
+        const created = await createBlockLegacyAuthPolicy({ includeGroupId, excludeGroupId });
+        return { created: true, id: created.id, state: created.state };
+      }
+    });
+  }
+
+  // ====== Sidebar collapse + graph auto expansion ======
+  const SIDEBAR_KEY = "securityzator_sidebar_collapsed_v1";
+
+  function isSidebarCollapsed(){
+    return $("sidebarShell").classList.contains("sidebar-collapsed");
+  }
+
+  function tryFitGraph(delayMs){
+    if(!network) return;
+    setTimeout(() => {
+      try{
+        network.redraw();
+        network.fit({ animation: { duration: 350, easingFunction: "easeInOutQuad" } });
+      }catch{}
+    }, delayMs || 0);
+  }
+
+  function setSidebarCollapsed(collapsed){
+    const sb = $("sidebarShell");
+    if(collapsed) sb.classList.add("sidebar-collapsed");
+    else sb.classList.remove("sidebar-collapsed");
+
+    localStorage.setItem(SIDEBAR_KEY, collapsed ? "1" : "0");
+
+    // When we collapse/expand, vis needs a redraw (canvas size changed)
+    tryFitGraph(120);
+  }
+
+  function toggleSidebar(){
+    setSidebarCollapsed(!isSidebarCollapsed());
+  }
+
+  function openSidebarAndSection(sectionId){
+    setSidebarCollapsed(false);
+    const el = document.querySelector(sectionId);
+    if(el){
+      const c = bootstrap.Collapse.getOrCreateInstance(el, { toggle: false });
+      c.show();
+      // optional: scroll into view
+      setTimeout(() => el.scrollIntoView({ block: "start", behavior: "smooth" }), 120);
+    }
+  }
+
+  // ====== Events ======
+  $("btnReload").addEventListener("click", () => {
+    const f = $("fileInput").files?.[0];
+    if(f) loadFromFile(f);
+    else tryAutoLoad();
+  });
+
+  $("fileInput").addEventListener("change", (e) => {
+    const f = e.target.files?.[0];
+    if(f) loadFromFile(f);
+  });
+
+  $("txtSearch").addEventListener("input", () => { renderControlList(); });
+  $("selCategory").addEventListener("change", () => { renderControlList(); });
+  $("selStatus").addEventListener("change", () => { renderControlList(); });
+  $("rngAligner").addEventListener("input", () => { refreshKPIs(); });
+
+  $("btnSelectAll").addEventListener("click", () => {
+    getFilteredRows().forEach(r => selectedIds.add(r.id));
+    renderControlList();
+    refreshKPIs();
+    updateGraphSelectionHighlight();
+  });
+
+  $("btnSelectNone").addEventListener("click", () => {
+    selectedIds.clear();
+    renderControlList();
+    refreshKPIs();
+    updateGraphSelectionHighlight();
+  });
+
+  $("btnEnablePlan").addEventListener("click", () => {
+    rawRows.forEach(r => { if(selectedIds.has(r.id)) r.enabledPlanned = true; });
+    renderControlList();
+    updateGraphSelectionHighlight();
+  });
+
+  $("btnOnlySelected").addEventListener("click", () => { onlySelectedMode = true; renderControlList(); });
+  $("btnAll").addEventListener("click", () => { onlySelectedMode = false; renderControlList(); });
+
+  $("btnShowAligners").addEventListener("click", showAlignerBreakdown);
+  $("btnCloseAligners").addEventListener("click", () => $("alignerPanel").classList.add("d-none"));
+
+  $("btnFit").addEventListener("click", () => tryFitGraph(0));
+
+  // Sidebar toggle
+  $("btnToggleSidebar").addEventListener("click", toggleSidebar);
+
+  // Rail shortcuts
+  $("railControls").addEventListener("click", () => openSidebarAndSection("#secLoader"));
+  $("railAuth").addEventListener("click", () => openSidebarAndSection("#secAuth"));
+  $("railJobs").addEventListener("click", () => openSidebarAndSection("#secJobs"));
+  $("railFilters").addEventListener("click", () => openSidebarAndSection("#secFilters"));
+  $("railList").addEventListener("click", () => openSidebarAndSection("#secList"));
+
+  // Auth buttons
+  $("btnSaveAuthCfg").addEventListener("click", async () => {
+    try{
+      const cfg = getAuthCfgFromUI();
+      if(cfg.redirectUri && !cfg.redirectUri.endsWith("/")) cfg.redirectUri += "/";
+      saveAuthCfg(cfg);
+      logJob("Auth: config saved");
+      await ensureMsal();
+    }catch(e){
+      setAuthUI("Signed out", "badge-bad", e.message);
+      logJob("Auth init failed: " + e.message);
+    }
+  });
+
+  $("btnLogin").addEventListener("click", async () => {
+    try{
+      const cfg = getAuthCfgFromUI();
+      if(cfg.redirectUri && !cfg.redirectUri.endsWith("/")) cfg.redirectUri += "/";
+      saveAuthCfg(cfg);
+
+      await ensureMsal();
+      await loginPopup();
+    }catch(e){
+      setAuthUI("Signed out", "badge-bad", e.message);
+      logJob("Auth failed: " + e.message);
+    }
+  });
+
+  $("btnLogout").addEventListener("click", async () => {
+    try{ await logout(); }
+    catch(e){ logJob("Logout failed: " + e.message); }
+  });
+
+  $("btnPullGraph").addEventListener("click", async () => {
+    try{ await pullSecureScoreFromGraph(); }
+    catch(e){
+      $("loadStatus").textContent = e.message;
+      logJob("Graph pull failed: " + e.message);
+    }
+  });
+
+  $("btnQuickWin").addEventListener("click", async () => {
+    try{
+      await ensureMsal();
+      await getAccessToken();
+      runQuickWinJob();
+    }catch(e){
+      $("loadStatus").textContent = e.message;
+      logJob("Quick win blocked: " + e.message);
+    }
+  });
+
+  // Keep graph responsive on window resize (important when sidebar toggles)
+  window.addEventListener("resize", () => tryFitGraph(60));
+
+  // ====== Boot ======
+  (async function init(){
+    $("rngAligner").value = "12";
+    refreshKPIs();
+
+    // Sidebar state restore
+    const collapsed = localStorage.getItem(SIDEBAR_KEY) === "1";
+    setSidebarCollapsed(collapsed);
+
+    const cfg = loadAuthCfg();
+    applyAuthCfgToUI(cfg);
+
+    try{
+      await ensureMsal();
+    }catch(e){
+      logJob("Auth init: " + e.message);
+    }
+
+    tryAutoLoad();
+    logJob("Ready.");
+  })();
+</script>
+</body>
+</html>

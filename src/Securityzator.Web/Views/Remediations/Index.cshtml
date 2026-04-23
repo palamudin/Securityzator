@@ -1,0 +1,723 @@
+@using Securityzator.Application.Jobs
+@using Securityzator.Application.Remediations
+@model Securityzator.Web.Models.Remediations.RemediationsPageViewModel
+@{
+    ViewData["Title"] = "Remediations";
+    var template = Model.SelectedTemplate;
+    var sourceRecommendation = Model.SourceRecommendation;
+    var runnableTemplates = Model.Blueprint.RemediationTemplates
+        .Where(item => item.SupportsQueueExecution)
+        .OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+    var isBlockLegacyAuth = string.Equals(template.Key, "block-legacy-auth", StringComparison.OrdinalIgnoreCase);
+    var isRequireMfaAdmins = string.Equals(template.Key, "require-mfa-admins", StringComparison.OrdinalIgnoreCase);
+    var isRequireMfaAllUsers = string.Equals(template.Key, "mfa-all-users", StringComparison.OrdinalIgnoreCase);
+    var isEntraRiskPolicies = string.Equals(template.Key, "entra-risk-policies", StringComparison.OrdinalIgnoreCase);
+    var isEntraIdentityHygiene = string.Equals(template.Key, "entra-identity-hygiene-baseline", StringComparison.OrdinalIgnoreCase);
+    var isEntraDailyUseHardening = string.Equals(template.Key, "entra-daily-use-hardening", StringComparison.OrdinalIgnoreCase);
+    var isRequireMfaGuestAccess = string.Equals(template.Key, "require-mfa-guest-access", StringComparison.OrdinalIgnoreCase);
+    var isRequireMfaAdminPortals = string.Equals(template.Key, "require-mfa-admin-portals", StringComparison.OrdinalIgnoreCase);
+    var isRequireMfaAzureManagement = string.Equals(template.Key, "require-mfa-azure-management", StringComparison.OrdinalIgnoreCase);
+    var isSecureSecurityInfoRegistration = string.Equals(template.Key, "secure-security-info-registration", StringComparison.OrdinalIgnoreCase);
+    var isRequireMfaRiskySignIns = string.Equals(template.Key, "require-mfa-risky-sign-ins", StringComparison.OrdinalIgnoreCase);
+    var isRequirePasswordChangeHighRiskUsers = string.Equals(template.Key, "require-password-change-high-risk-users", StringComparison.OrdinalIgnoreCase);
+    var isRequirePhishingResistantAdmins = string.Equals(template.Key, "require-phishing-resistant-mfa-admins", StringComparison.OrdinalIgnoreCase);
+    var isMdoSafeLinksAndAttachments = string.Equals(template.Key, "mdo-safe-links-and-attachments", StringComparison.OrdinalIgnoreCase);
+    var isMdoSpamAndForwarding = string.Equals(template.Key, "mdo-spam-and-forwarding-baseline", StringComparison.OrdinalIgnoreCase);
+    var isTeamsMeetingHardening = string.Equals(template.Key, "teams-meeting-hardening", StringComparison.OrdinalIgnoreCase);
+    var isDefenderEndpointBitLockerBaseline = string.Equals(template.Key, "defender-endpoint-bitlocker-baseline", StringComparison.OrdinalIgnoreCase);
+    var isDefenderEndpointCredentialAndElevationHardening = string.Equals(template.Key, "defender-endpoint-credential-and-elevation-hardening", StringComparison.OrdinalIgnoreCase);
+    var isDefenderEndpointRemoteAccessAndNetworkHardening = string.Equals(template.Key, "defender-endpoint-remote-access-and-network-hardening", StringComparison.OrdinalIgnoreCase);
+    var isDefenderEndpointCoreProtection = string.Equals(template.Key, "defender-endpoint-core-protection", StringComparison.OrdinalIgnoreCase);
+    var isDefenderEndpointFirewallAndSmartScreen = string.Equals(template.Key, "defender-endpoint-firewall-and-smartscreen", StringComparison.OrdinalIgnoreCase);
+    var isDefenderEndpointBrowserHardening = string.Equals(template.Key, "defender-endpoint-browser-hardening", StringComparison.OrdinalIgnoreCase);
+    var isDefenderEndpointBrowserAndAdobePolicySurface = string.Equals(template.Key, "defender-endpoint-browser-and-adobe-policy-surface-readiness", StringComparison.OrdinalIgnoreCase);
+    var isDefenderEndpointExploitProtection = string.Equals(template.Key, "defender-endpoint-exploit-protection", StringComparison.OrdinalIgnoreCase);
+    var isDefenderEndpointSensorAndAgentHealth = string.Equals(template.Key, "defender-endpoint-sensor-and-agent-health", StringComparison.OrdinalIgnoreCase);
+    var isDefenderEndpointAttackSurfaceReduction = string.Equals(template.Key, "defender-endpoint-attack-surface-reduction", StringComparison.OrdinalIgnoreCase);
+    var isDefenderEndpointOsSecurityBaseline = string.Equals(template.Key, "defender-endpoint-os-security-baseline", StringComparison.OrdinalIgnoreCase);
+    var hasQueueForm = template.SupportsQueueExecution;
+    var queueAction = "ExecuteQueueableTemplate";
+    var queueDisabled = !Model.HasSelectedConnection || (Model.UsesTenantGroups && !Model.HasAvailableGroups);
+    var isEnabledLaunch = Model.EffectiveLaunchMode == RemediationLaunchMode.Enabled;
+    var isReportOnlyLaunch = Model.EffectiveLaunchMode == RemediationLaunchMode.ReportOnly;
+    var launchModeLabel = isEnabledLaunch
+        ? "enabled"
+        : isReportOnlyLaunch
+            ? "report-only"
+            : "direct-apply";
+    var queueHeading = !hasQueueForm
+        ? "Playbook intake and next steps"
+        : isRequireMfaAdmins
+            ? $"Queue {launchModeLabel} require MFA for privileged admins"
+            : isRequireMfaAllUsers
+                ? $"Queue {launchModeLabel} require MFA for all users"
+                : isEntraRiskPolicies
+                    ? $"Queue {launchModeLabel} Entra risk policies package"
+                : isEntraIdentityHygiene
+                    ? "Queue Entra admin and consent hygiene assessment"
+                : isEntraDailyUseHardening
+                    ? "Queue Entra daily-use consent and password hardening"
+                : isRequireMfaGuestAccess
+                    ? $"Queue {launchModeLabel} require MFA for guest access"
+                    : isRequireMfaAdminPortals
+                        ? $"Queue {launchModeLabel} require MFA for Microsoft admin portals"
+                        : isRequireMfaAzureManagement
+                            ? $"Queue {launchModeLabel} require MFA for Azure management"
+                            : isSecureSecurityInfoRegistration
+                                ? $"Queue {launchModeLabel} secure security info registration"
+                            : isRequireMfaRiskySignIns
+                                ? $"Queue {launchModeLabel} require MFA for risky sign-ins"
+                            : isRequirePasswordChangeHighRiskUsers
+                                ? $"Queue {launchModeLabel} require password change for high-risk users"
+                            : isMdoSafeLinksAndAttachments
+                                ? "Queue Defender for Office Safe Links and attachments baseline"
+                            : isMdoSpamAndForwarding
+                                ? "Queue Defender for Office spam and forwarding baseline"
+                                : isDefenderEndpointBitLockerBaseline
+                                    ? "Queue Defender BitLocker startup baseline"
+                                    : isDefenderEndpointCredentialAndElevationHardening
+                                        ? "Queue Defender credential and elevation hardening"
+                                : isDefenderEndpointRemoteAccessAndNetworkHardening
+                                    ? "Queue Defender remote access and network hardening"
+                                : isDefenderEndpointCoreProtection
+                                    ? "Queue Defender for Endpoint core protection baseline"
+                                    : isDefenderEndpointBrowserHardening
+                                        ? "Queue Defender browser hardening baseline"
+                                    : isDefenderEndpointExploitProtection
+                                        ? "Queue Defender exploit protection baseline"
+                                    : isDefenderEndpointSensorAndAgentHealth
+                                        ? "Queue Defender sensor and agent health assessment"
+                                    : isDefenderEndpointFirewallAndSmartScreen
+                                        ? "Queue Defender Firewall and SmartScreen baseline"
+                                    : isDefenderEndpointAttackSurfaceReduction
+                                        ? "Queue Defender for Endpoint attack surface reduction baseline"
+                                        : isDefenderEndpointOsSecurityBaseline
+                                            ? "Queue Defender for Endpoint OS security baseline"
+                                            : isTeamsMeetingHardening
+                                                ? "Queue Teams meeting hardening baseline"
+                                                : isRequirePhishingResistantAdmins
+                                                    ? $"Queue {launchModeLabel} phishing-resistant MFA for privileged admins"
+                                                    : $"Queue {launchModeLabel} block legacy auth";
+    var targetScopeSummary = isRequireMfaGuestAccess
+        ? $"All guest and external users are included in this {launchModeLabel} policy. Use the exclusion group below for staged rollout or emergency exceptions if the tenant needs it."
+        : isRequireMfaAdminPortals
+            ? $"Protected built-in administrator roles are included in this {launchModeLabel} policy when they access Microsoft admin portals. Use the exclusion group below for staged rollout or breakglass safety if the tenant needs it."
+            : isSecureSecurityInfoRegistration
+                ? $"All users are included for the register-security-info user action outside trusted locations, while guest and external users stay excluded by design. Use the exclusion group below for breakglass or staged rollout safety if the tenant needs it before moving beyond {launchModeLabel} mode."
+                : isMdoSafeLinksAndAttachments
+                    ? "This playbook updates tenant-wide Defender for Office Safe Links, Safe Attachments, and SharePoint/OneDrive/Teams protection settings directly. Group targeting is not used in this slice."
+                    : isMdoSpamAndForwarding
+                        ? "This playbook updates tenant-wide inbound spam filtering and outbound forwarding posture directly across all accepted domains. Group targeting is not used in this slice."
+                        : isDefenderEndpointCoreProtection
+                            ? "This playbook creates or updates a managed Intune Windows core protection profile and assigns it to the selected Microsoft Entra pilot group, with an optional exclusion group for staged rollout safety."
+                            : isDefenderEndpointBitLockerBaseline
+                                ? "This playbook creates or updates a managed Intune Windows BitLocker baseline and assigns it to the selected Microsoft Entra pilot group, with an optional exclusion group for staged rollout safety."
+                            : isDefenderEndpointCredentialAndElevationHardening
+                                ? "This playbook creates or updates a managed Intune Windows custom credential and elevation hardening baseline and assigns it to the selected Microsoft Entra pilot group, with an optional exclusion group for staged rollout safety."
+                            : isDefenderEndpointRemoteAccessAndNetworkHardening
+                                ? "This playbook creates or updates a managed Intune Windows custom remote access and network hardening baseline and assigns it to the selected Microsoft Entra pilot group, with an optional exclusion group for staged rollout safety."
+                            : isDefenderEndpointBrowserHardening
+                                ? "This playbook creates or updates a managed Intune browser hardening baseline and assigns it to the selected Microsoft Entra pilot group, with an optional exclusion group for staged rollout safety."
+                            : isDefenderEndpointExploitProtection
+                                ? "This playbook creates or updates a managed Intune Windows exploit protection baseline and assigns it to the selected Microsoft Entra pilot group, with an optional exclusion group for staged rollout safety."
+                            : isDefenderEndpointSensorAndAgentHealth
+                                ? "This playbook assesses Intune-managed Windows devices in the selected Microsoft Entra pilot group and records Defender sensor and agent-health follow-up, with an optional exclusion group for staged rollout safety."
+                            : isDefenderEndpointFirewallAndSmartScreen
+                                ? "This playbook creates or updates a managed Intune firewall and SmartScreen package, including the companion Edge SmartScreen profile, and assigns it to the selected Microsoft Entra pilot group with an optional exclusion group for staged rollout safety."
+                            : isDefenderEndpointAttackSurfaceReduction
+                                ? "This playbook creates or updates a managed Intune Windows attack surface reduction profile and assigns it to the selected Microsoft Entra pilot group, with an optional exclusion group for staged rollout safety."
+                                : isDefenderEndpointOsSecurityBaseline
+                                    ? "This playbook creates or updates a managed Intune Windows OS security baseline and assigns it to the selected Microsoft Entra pilot group, with an optional exclusion group for staged rollout safety."
+                                    : isTeamsMeetingHardening
+                                        ? "This playbook updates the tenant's Global Teams meeting policy directly. Group targeting is not used in this slice."
+                                        : isEntraRiskPolicies
+                                            ? $"All users are evaluated through the paired risky sign-in and high-risk-user policies in this {launchModeLabel} package, while guests and protected admin roles stay excluded by design. Use the exclusion group below for breakglass or staged rollout safety if the tenant needs it."
+                                            : isEntraIdentityHygiene
+                                                ? "This tenant-wide assessment reads Microsoft Entra policy and directory posture directly. Group targeting is not used in this slice."
+                                                : isEntraDailyUseHardening
+                                                    ? "This tenant-wide hardening slice updates Microsoft Entra tenant settings directly. Group targeting is not used in this slice."
+                                            : isRequireMfaRiskySignIns || isRequirePasswordChangeHighRiskUsers
+                                                ? $"All users are included in this {launchModeLabel} policy for risk-driven evaluation, while guests and protected admin roles stay excluded by design. Use the exclusion group below for breakglass or staged rollout safety if the tenant needs it."
+                                                : $"All users are included in this {launchModeLabel} policy. Use the exclusion group below for breakglass or staged rollout safety if the tenant needs it.";
+}
+
+@functions {
+    private static string GetStatusClass(RemediationRunStatus status)
+    {
+        return status switch
+        {
+            RemediationRunStatus.Succeeded => "success",
+            RemediationRunStatus.Failed => "failed",
+            _ => "idle"
+        };
+    }
+
+    private static string GetJobStatusClass(RemediationJobStatus status)
+    {
+        return status switch
+        {
+            RemediationJobStatus.Succeeded => "success",
+            RemediationJobStatus.Failed => "failed",
+            RemediationJobStatus.Running => "running",
+            RemediationJobStatus.RetryScheduled => "retry",
+            _ => "idle"
+        };
+    }
+}
+
+<section class="content-section">
+    <div class="section-heading">
+        <div>
+            <span class="eyebrow">Runnable catalog</span>
+            <h2>Live quick wins and best-practice controls</h2>
+            <p class="section-copy">These playbooks are executable from the current app even when they do not originate from Secure Score directly, so operators can launch the April 2026 baseline controls from the same queue workflow.</p>
+        </div>
+    </div>
+
+    <div class="template-grid">
+        @foreach (var runnableTemplate in runnableTemplates)
+        {
+            var selectedClass = string.Equals(runnableTemplate.Key, template.Key, StringComparison.OrdinalIgnoreCase)
+                ? "info-card template-card selected"
+                : "info-card template-card";
+
+            <article class="@selectedClass">
+                <div class="card-kicker">@runnableTemplate.DeliveryMode</div>
+                <h3>@runnableTemplate.Name</h3>
+                <p>@runnableTemplate.Summary</p>
+                <div class="table-subtext">Target surface: @runnableTemplate.Targeting.TargetSurface</div>
+                <div class="table-subtext">Execution surface: @runnableTemplate.ExecutionSurface</div>
+                <div class="form-actions compact">
+                    <a class="btn btn-outline-light"
+                       asp-action="Index"
+                       asp-route-connectionId="@Model.ConnectionId"
+                       asp-route-templateKey="@runnableTemplate.Key"
+                       asp-route-sourceControlId="@Model.SourceControlId">Open playbook</a>
+                </div>
+            </article>
+        }
+    </div>
+</section>
+
+<section class="content-section">
+    <div class="section-heading">
+        <div>
+            <span class="eyebrow">Milestone 4 live slice</span>
+            <h1>Playbook-based remediation engine</h1>
+            <p class="section-copy">Recommendations can now hand off into a named playbook with tenant context preserved. Runnable quick wins keep their queue flow, while mapped backlog and control-set candidates stay visible as operator-ready work instead of falling back to the prototype.</p>
+        </div>
+        <div class="shell-pill">@Model.WorkspaceName</div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+    {
+        <div class="alert-shell success">@Model.StatusMessage</div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+    {
+        <div class="alert-shell error">@Model.ErrorMessage</div>
+    }
+
+    <div class="split-layout">
+        <article class="info-card">
+            <div class="card-kicker">@template.DeliveryMode</div>
+            <h2>@template.Name</h2>
+            <p>@template.Summary</p>
+            <div class="template-block">
+                <div class="template-heading">Methodology</div>
+                <p>@template.Methodology</p>
+            </div>
+            @if (!string.IsNullOrWhiteSpace(template.ExecutionSurface))
+            {
+                <div class="template-block">
+                    <div class="template-heading">Execution surface</div>
+                    <p>@template.ExecutionSurface</p>
+                </div>
+            }
+            <div class="template-block">
+                <div class="template-heading">Target scope</div>
+                <p><strong>@template.Targeting.TargetSurface</strong></p>
+                <p>@template.Targeting.Summary</p>
+            </div>
+            <div class="template-block">
+                <div class="template-heading">Required inputs</div>
+                <ul class="info-list compact">
+                    @foreach (var input in template.RequiredInputs)
+                    {
+                        <li>@input</li>
+                    }
+                </ul>
+            </div>
+            <div class="template-block">
+                <div class="template-heading">Execution steps</div>
+                <ol class="step-list">
+                    @foreach (var step in template.Steps)
+                    {
+                        <li>@step</li>
+                    }
+                </ol>
+            </div>
+            @if (template.HasBlockers)
+            {
+                <div class="template-block">
+                    <div class="template-heading">Current blockers</div>
+                    <ul class="info-list compact">
+                        @foreach (var blocker in template.CurrentBlockers)
+                        {
+                            <li>@blocker</li>
+                        }
+                    </ul>
+                </div>
+            }
+            else if (!template.SupportsQueueExecution)
+            {
+                <div class="template-block">
+                    <div class="template-heading">Current blockers</div>
+                    <p>No explicit blockers are recorded yet, but this playbook is still not promoted into worker execution.</p>
+                </div>
+            }
+            @if (!string.IsNullOrWhiteSpace(template.NextStage))
+            {
+                <div class="template-block">
+                    <div class="template-heading">Next stage</div>
+                    <p>@template.NextStage</p>
+                </div>
+            }
+            @if (sourceRecommendation is not null)
+            {
+                <div class="template-block">
+                    <div class="template-heading">Source recommendation</div>
+                    <p class="mb-1"><strong>@sourceRecommendation.Title</strong></p>
+                    <div class="table-subtext">Control ID: @sourceRecommendation.ControlId</div>
+                    <div class="table-subtext">Category: @(string.IsNullOrWhiteSpace(sourceRecommendation.Category) ? "Unspecified" : sourceRecommendation.Category)</div>
+                    <div class="table-subtext">Product: @(string.IsNullOrWhiteSpace(sourceRecommendation.Product) ? "Unspecified" : sourceRecommendation.Product)</div>
+                    <div class="table-subtext">Rank: #@sourceRecommendation.Rank | Score: @sourceRecommendation.MaxScore.ToString("0.##")</div>
+                    <div class="form-actions compact">
+                        <a class="btn btn-outline-light"
+                           asp-controller="Recommendations"
+                           asp-action="Index"
+                           asp-route-connectionId="@Model.ConnectionId"
+                           asp-route-playbook="@template.Key"
+                           asp-route-searchTerm="@sourceRecommendation.ControlId">Back to recommendations</a>
+                    </div>
+                </div>
+            }
+        </article>
+
+        <article class="info-card">
+            <div class="card-kicker">Operator @Model.OperatorDisplayName</div>
+            <h2>@queueHeading</h2>
+            <p class="muted-note">
+                @if (isBlockLegacyAuth)
+                {
+                    <text>The worker creates or promotes the policy with the POC naming and the selected <strong>@launchModeLabel</strong> posture: <strong>SS-AUTO | Block legacy authentication</strong>.</text>
+                }
+                else if (isRequireMfaAdmins)
+                {
+                    <text>The worker creates or promotes a <strong>@launchModeLabel</strong> Conditional Access policy named <strong>SS-AUTO | Require MFA for privileged admins</strong> for the selected privileged-admin group.</text>
+                }
+                else if (isRequireMfaAllUsers)
+                {
+                    <text>The worker creates or promotes a <strong>@launchModeLabel</strong> Conditional Access policy named <strong>SS-AUTO | Require MFA for all users</strong> with optional exclusion groups for breakglass or staged rollout safety.</text>
+                }
+                else if (isEntraRiskPolicies)
+                {
+                    <text>The worker executes the <strong>@launchModeLabel</strong> Entra risk package by creating or promoting both <strong>SS-AUTO | Require MFA when risky sign-ins are detected</strong> and <strong>SS-AUTO | Require password change for high-risk users</strong> together, using the same exclusion group and approval trail.</text>
+                }
+                else if (isEntraIdentityHygiene)
+                {
+                    <text>The worker uses Microsoft Graph authorization policy, admin consent workflow, default domain settings, and Global Administrator membership to assess Entra admin-and-consent hygiene. This is a queued tenant assessment, not a live tenant change.</text>
+                }
+                else if (isEntraDailyUseHardening)
+                {
+                    <text>The worker uses Microsoft Graph authorization policy, admin consent workflow, and default domain update APIs to disable default user consent, enable the admin consent workflow, and keep the default password-expiration posture aligned. This is a live tenant change, not a report-only assessment.</text>
+                }
+                else if (isRequireMfaGuestAccess)
+                {
+                    <text>The worker creates or promotes a <strong>@launchModeLabel</strong> Conditional Access policy named <strong>SS-AUTO | Require MFA for guest access</strong> for all guest and external users, with an optional exclusion group for staged rollout or emergency exceptions.</text>
+                }
+                else if (isRequireMfaAdminPortals)
+                {
+                    <text>The worker creates or promotes a <strong>@launchModeLabel</strong> Conditional Access policy named <strong>SS-AUTO | Require MFA for Microsoft admin portals</strong> for protected built-in administrator roles when they access Microsoft admin portals.</text>
+                }
+                else if (isRequireMfaAzureManagement)
+                {
+                    <text>The worker creates or promotes a <strong>@launchModeLabel</strong> Conditional Access policy named <strong>SS-AUTO | Require MFA for Azure management</strong> for Azure Resource Manager access, with an optional exclusion group for breakglass or staged rollout.</text>
+                }
+                else if (isSecureSecurityInfoRegistration)
+                {
+                    <text>The worker creates or promotes a <strong>@launchModeLabel</strong> Conditional Access policy named <strong>SS-AUTO | Secure security info registration</strong> for the register-security-info user action outside trusted locations, excluding guests by design.</text>
+                }
+                else if (isRequireMfaRiskySignIns)
+                {
+                    <text>The worker creates or promotes a <strong>@launchModeLabel</strong> Conditional Access policy named <strong>SS-AUTO | Require MFA when risky sign-ins are detected</strong> for medium and high sign-in risk events, excluding guests and protected admin roles.</text>
+                }
+                else if (isRequirePasswordChangeHighRiskUsers)
+                {
+                    <text>The worker creates or promotes a <strong>@launchModeLabel</strong> Conditional Access policy named <strong>SS-AUTO | Require password change for high-risk users</strong> for high user-risk events, excluding guests and protected admin roles.</text>
+                }
+                else if (isRequirePhishingResistantAdmins)
+                {
+                    <text>The worker creates or promotes a <strong>@launchModeLabel</strong> Conditional Access policy named <strong>SS-AUTO | Require phishing-resistant MFA for privileged admins</strong> for the selected privileged-admin group.</text>
+                }
+                else if (isMdoSafeLinksAndAttachments)
+                {
+                    <text>The worker connects to Exchange Online with the saved automation certificate, enables Defender for Office protection for SharePoint, OneDrive, and Teams, and creates or updates the <strong>SS-AUTO | Safe Links baseline</strong> and <strong>SS-AUTO | Safe Attachments baseline</strong> policies for all accepted domains. This is a live mail-protection change, not a report-only policy.</text>
+                }
+                else if (isMdoSpamAndForwarding)
+                {
+                    <text>The worker connects to Exchange Online with the saved automation certificate and creates or updates the <strong>SS-AUTO | Spam baseline</strong> and <strong>SS-AUTO | Outbound forwarding baseline</strong> policies for all accepted domains, including quarantine-focused spam actions, ZAP, automatic external forwarding control, and recipient throttling. Connection-filter allowlists and other mail-flow follow-up items are preserved as notes instead of being hidden. This is a live mail-protection change, not a report-only policy.</text>
+                }
+                else if (isDefenderEndpointCoreProtection)
+                {
+                    <text>The worker uses Microsoft Graph Intune device-configuration APIs to create or update the <strong>SS-AUTO | Endpoint core protection baseline</strong> and the companion <strong>SS-AUTO | Endpoint core protection hardening</strong> profile, assign both to the selected pilot group, and preserve follow-up notes for residual items like EDR in block mode, update-governance controls, and broader Defender connectivity validation. Together they cover Defender Antivirus, cloud protection, PUA blocking, network protection, and tamper protection. This is a live endpoint baseline change, not a report-only policy.</text>
+                }
+                else if (isDefenderEndpointBitLockerBaseline)
+                {
+                    <text>The worker uses Microsoft Graph Intune endpoint-protection configuration APIs to create or update the <strong>SS-AUTO | Endpoint BitLocker baseline</strong>, assign it to the selected pilot group, and then assess managed-device encryption telemetry so BitLocker encryption state, readiness, and reported policy assignment are visible in the run history. Recovery escrow and hands-on remediation for hardware or readiness blockers still need device-level follow-up. This is a live endpoint baseline change, not a report-only policy.</text>
+                }
+                else if (isDefenderEndpointCredentialAndElevationHardening)
+                {
+                    <text>The worker uses Microsoft Graph Intune custom device-configuration APIs to create or update the <strong>SS-AUTO | Endpoint credential and elevation hardening</strong> profile, assign it to the selected pilot group, and now covers WDigest disablement, LSA protected-process posture, Safe DLL search mode, hidden admin enumeration on elevation, local-account UAC network-logon restrictions, and Windows Installer privilege hardening in addition to the original Credential Guard and elevation controls. Residual follow-up remains for WinRM Basic authentication, Remote Assistance, and other adjacent items that still need another management surface. This is a live endpoint baseline change, not a report-only policy.</text>
+                }
+                else if (isDefenderEndpointRemoteAccessAndNetworkHardening)
+                {
+                    <text>The worker uses Microsoft Graph Intune custom device-configuration APIs to create or update the <strong>SS-AUTO | Endpoint remote access and network hardening</strong> profile, assign it to the selected pilot group, and now covers Remote Desktop TLS, AutoPlay or AutoRun hardening, SMBv1 client and server retirement, and IPv4/IPv6 source-routing protection alongside the earlier WinRM, Remote Assistance, and network-bridge posture. Residual follow-up remains for broader browser-adjacent and compatibility-sensitive network-surface items that still need another management surface. This is a live endpoint baseline change, not a report-only policy.</text>
+                }
+                else if (isDefenderEndpointBrowserHardening)
+                {
+                    <text>The worker uses Microsoft Graph Intune group policy configuration APIs to create or update the <strong>SS-AUTO | Endpoint browser hardening baseline</strong>, assign it to the selected pilot group, and enforce Chrome background-app, AutoFill, password-manager, and third-party cookie posture. Residual follow-up remains for removed Chrome plugin policy coverage and Adobe-specific browser controls that still need another management surface. This is a live endpoint baseline change, not a report-only policy.</text>
+                }
+                else if (isDefenderEndpointBrowserAndAdobePolicySurface)
+                {
+                    <text>The worker uses Microsoft Graph Intune group policy definition and uploaded-ADMX assessment APIs to check whether the remaining Chrome outdated plug-in control and Adobe Acrobat or Reader JavaScript and Flash controls are exposed on this tenant. This is a queued readiness assessment, not a live endpoint change.</text>
+                }
+                else if (isDefenderEndpointExploitProtection)
+                {
+                    <text>The worker uses Microsoft Graph Intune endpoint-protection configuration APIs to create or update the <strong>SS-AUTO | Endpoint exploit protection baseline</strong>, assign it to the selected pilot group, and apply Securityzator’s system-level exploit protection XML for DEP, ASLR, Control Flow Guard, SEHOP, and heap corruption termination. Residual follow-up remains for reboot-sensitive rollout checks and app-specific exploit mitigations. This is a live endpoint baseline change, not a report-only policy.</text>
+                }
+                else if (isDefenderEndpointSensorAndAgentHealth)
+                {
+                    <text>The worker uses Microsoft Graph Intune managed-device inventory, <strong>windowsProtectionState</strong>, and endpoint-detection-and-response policy readback to assess scoped Windows devices for Defender onboarding coverage, stale telemetry, overdue signatures, missing core component health, and WSL plug-in readiness follow-up. This is a queued assessment workflow, not a tenant configuration change.</text>
+                }
+                else if (isDefenderEndpointFirewallAndSmartScreen)
+                {
+                    <text>The worker uses Microsoft Graph Intune endpoint-protection and group policy configuration APIs to create or update the <strong>SS-AUTO | Endpoint firewall and SmartScreen baseline</strong> plus the companion <strong>SS-AUTO | Endpoint Edge SmartScreen baseline</strong>, assign both to the selected pilot group, and preserve follow-up notes for broader browser-specific controls that still need another management surface. This is a live endpoint baseline change, not a report-only policy.</text>
+                }
+                else if (isDefenderEndpointAttackSurfaceReduction)
+                {
+                    <text>The worker uses Microsoft Graph Intune endpoint-protection configuration APIs to create or update the <strong>SS-AUTO | Endpoint attack surface reduction baseline</strong>, assign it to the selected pilot group, and preserve follow-up notes for browser, Adobe, webshell, Safe Mode, and other residual ASR-related items. This is a live endpoint baseline change, not a report-only policy.</text>
+                }
+                else if (isDefenderEndpointOsSecurityBaseline)
+                {
+                    <text>The worker uses Microsoft Graph Intune endpoint-protection configuration APIs to create or update the <strong>SS-AUTO | Endpoint OS security baseline</strong>, assign it to the selected pilot group, and preserve follow-up notes for broader password-policy, server, and workstation platform items that still need a separate provider or a more opinionated rollout stance. This is a live endpoint baseline change, not a report-only policy.</text>
+                }
+                else if (isTeamsMeetingHardening)
+                {
+                    <text>The worker updates the <strong>Global</strong> Teams meeting policy to Securityzator’s baseline for invited-user admission, presenter defaults, anonymous access, PSTN lobby bypass, and external control. This is a live tenant change, not a report-only policy.</text>
+                }
+                else
+                {
+                    <text>This playbook is mapped from live Secure Score recommendations already, but it is not automated yet. The goal of this page is to keep the operator workflow and evidence trail intact while we decide what the next safe execution slice should be.</text>
+                }
+            </p>
+
+            @if (hasQueueForm && !Model.HasConnections)
+            {
+                <div class="empty-state">
+                    <h3>No Azure connection is ready yet</h3>
+                    <p>Create a saved tenant connection first so Securityzator can resolve groups and execute the policy server-side.</p>
+                    <div class="form-actions compact">
+                        <a class="btn btn-primary" asp-controller="Connections" asp-action="Index">Create a connection</a>
+                    </div>
+                </div>
+            }
+            else if (hasQueueForm)
+            {
+                <form asp-action="Index" method="get" class="stack-form">
+                    <input type="hidden" name="templateKey" value="@Model.TemplateKey" />
+                    <input type="hidden" name="sourceControlId" value="@Model.SourceControlId" />
+                    <div class="form-field">
+                        <label asp-for="ConnectionId"></label>
+                        <select asp-for="ConnectionId" class="form-control">
+                            <option value="">Select a connection</option>
+                            @foreach (var connection in Model.Connections)
+                            {
+                                <option value="@connection.Id">@connection.DisplayName (@connection.TenantId)</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="form-actions compact">
+                        <button type="submit" class="btn btn-outline-light">@(Model.UsesTenantGroups ? "Load tenant groups" : "Load tenant context")</button>
+                    </div>
+                </form>
+
+                <hr class="section-divider" />
+
+                <form asp-action="@queueAction" method="post" class="stack-form">
+                    @Html.AntiForgeryToken()
+                    <input asp-for="ConnectionId" type="hidden" />
+                    <input asp-for="TemplateKey" type="hidden" />
+                    <input asp-for="SourceControlId" type="hidden" />
+
+                    <div asp-validation-summary="ModelOnly" class="validation-summary"></div>
+
+                    @if (Model.SupportsLaunchModeSelection)
+                    {
+                        <div class="form-field">
+                            <label asp-for="LaunchMode"></label>
+                            <select asp-for="LaunchMode" class="form-control">
+                                <option value="@RemediationLaunchMode.ReportOnly">Report-only</option>
+                                <option value="@RemediationLaunchMode.Enabled">Enabled</option>
+                            </select>
+                            <div class="table-subtext">Report-only is the safer default. Enabled creates a new policy in enforced state or promotes an existing report-only Securityzator policy into enabled state.</div>
+                        </div>
+                    }
+                    else
+                    {
+                        <input asp-for="LaunchMode" type="hidden" value="@Model.EffectiveLaunchMode" />
+                        <div class="template-block">
+                            <div class="template-heading">Launch mode</div>
+                            <p>This playbook uses <strong>direct apply</strong> mode because it makes a live baseline change and does not support a report-only posture.</p>
+                        </div>
+                    }
+
+                    @if (Model.RequiresIncludeGroup)
+                    {
+                        <div class="form-field">
+                            <label asp-for="IncludeGroupId"></label>
+                            @if (isRequireMfaAdmins || isRequirePhishingResistantAdmins)
+                            {
+                                <div class="table-subtext">Select the Microsoft Entra group that represents your privileged administrators.</div>
+                            }
+                            @if (Model.HasAvailableGroups)
+                            {
+                                <select asp-for="IncludeGroupId" class="form-control">
+                                    <option value="">@((isRequireMfaAdmins || isRequirePhishingResistantAdmins) ? "Select a privileged admin group" : "Select an include group")</option>
+                                    @foreach (var group in Model.AvailableGroups)
+                                    {
+                                        <option value="@group.Id">@group.DisplayName (@group.Id)</option>
+                                    }
+                                </select>
+                            }
+                            else
+                            {
+                                <select asp-for="IncludeGroupId" class="form-control" disabled>
+                                    <option value="">@((isRequireMfaAdmins || isRequirePhishingResistantAdmins) ? "Select a privileged admin group" : "Select an include group")</option>
+                                </select>
+                            }
+                            <span asp-validation-for="IncludeGroupId" class="field-validation-error"></span>
+                        </div>
+                    }
+                    else
+                    {
+                        <input asp-for="IncludeGroupId" type="hidden" value="" />
+                        <div class="template-block">
+                            <div class="template-heading">Target scope</div>
+                            <p>@targetScopeSummary</p>
+                            @*
+                            {
+                            <p>
+                                @(isRequireMfaGuestAccess
+                                    ? "All guest and external users are included in this report-only policy. Use the exclusion group below for staged rollout or emergency exceptions if the tenant needs it."
+                                    : isRequireMfaAdminPortals
+                                        ? "Protected built-in administrator roles are included in this report-only policy when they access Microsoft admin portals. Use the exclusion group below for staged rollout or breakglass safety if the tenant needs it."
+                                        : isSecureSecurityInfoRegistration
+                                            ? "All users are included for the register-security-info user action outside trusted locations, while guest and external users stay excluded by design. Use the exclusion group below for breakglass or staged rollout safety if the tenant needs it."
+                                        : isMdoSafeLinksAndAttachments
+                                            ? "This playbook updates tenant-wide Defender for Office Safe Links, Safe Attachments, and SharePoint/OneDrive/Teams protection settings directly. Group targeting is not used in this slice."
+                                        : isTeamsMeetingHardening
+                                            ? "This playbook updates the tenant’s Global Teams meeting policy directly. Group targeting is not used in this slice."
+                                        : isRequireMfaRiskySignIns || isRequirePasswordChangeHighRiskUsers
+                                            ? "All users are included in this report-only policy for risk-driven evaluation, while guests and protected admin roles stay excluded by design. Use the exclusion group below for breakglass or staged rollout safety if the tenant needs it."
+                                            : "All users are included in this report-only policy. Use the exclusion group below for breakglass or staged rollout safety if the tenant needs it.")
+                            </p>
+                            *@
+                        </div>
+                    }
+
+                    @if (Model.SupportsExcludeGroup)
+                    {
+                        <div class="form-field">
+                            <label asp-for="ExcludeGroupId"></label>
+                            @if (isRequireMfaAllUsers)
+                            {
+                                <div class="table-subtext">Optional but recommended: exclude a breakglass or pilot group before queueing the tenant-wide policy.</div>
+                            }
+                            @if (Model.HasAvailableGroups)
+                            {
+                                <select asp-for="ExcludeGroupId" class="form-control">
+                                    <option value="">No exclusion group</option>
+                                    @foreach (var group in Model.AvailableGroups)
+                                    {
+                                        <option value="@group.Id">@group.DisplayName (@group.Id)</option>
+                                    }
+                                </select>
+                            }
+                            else
+                            {
+                                <select asp-for="ExcludeGroupId" class="form-control" disabled>
+                                    <option value="">No exclusion group</option>
+                                </select>
+                            }
+                            <span asp-validation-for="ExcludeGroupId" class="field-validation-error"></span>
+                        </div>
+                    }
+                    else
+                    {
+                        <input asp-for="ExcludeGroupId" type="hidden" value="" />
+                    }
+
+                    <div class="form-field">
+                        <label asp-for="ApprovalJustification"></label>
+                        <textarea asp-for="ApprovalJustification" class="form-control text-area-control" rows="4" placeholder="Why is this change being queued right now?"></textarea>
+                        <span asp-validation-for="ApprovalJustification" class="field-validation-error"></span>
+                    </div>
+
+                    <div class="form-check">
+                        <input asp-for="ConfirmReportOnly" class="form-check-input" />
+                        <label asp-for="ConfirmReportOnly" class="form-check-label">@(Model.RequiresReportOnlyConfirmation
+                            ? "I confirm this control should be created or kept in report-only mode."
+                            : isMdoSafeLinksAndAttachments
+                            ? "I confirm this playbook makes a live Defender for Office mail-protection change and has no report-only equivalent."
+                            : isMdoSpamAndForwarding
+                            ? "I confirm this playbook makes a live tenant-wide spam and forwarding change and may leave explicit mail-flow follow-up notes."
+                            : isDefenderEndpointBitLockerBaseline || isDefenderEndpointCoreProtection || isDefenderEndpointBrowserHardening || isDefenderEndpointExploitProtection || isDefenderEndpointFirewallAndSmartScreen || isDefenderEndpointAttackSurfaceReduction || isDefenderEndpointOsSecurityBaseline
+                            ? "I confirm this playbook makes a live Intune endpoint baseline change for the selected pilot scope and has no report-only equivalent."
+                            : isTeamsMeetingHardening
+                            ? "I confirm this playbook makes a live tenant-wide Teams meeting policy change and has no report-only equivalent."
+                            : "I confirm this quick win must stay in report-only mode.")</label>
+                    </div>
+                    <span asp-validation-for="ConfirmReportOnly" class="field-validation-error"></span>
+
+                    @if (Model.RequiresEnabledChangeConfirmation)
+                    {
+                        <div class="form-check">
+                            <input asp-for="ConfirmEnabledChange" class="form-check-input" />
+                            <label asp-for="ConfirmEnabledChange" class="form-check-label">I confirm this launch should create or promote the policy directly into enabled state.</label>
+                        </div>
+                        <span asp-validation-for="ConfirmEnabledChange" class="field-validation-error"></span>
+                    }
+
+                    @if (Model.RequiresGroupReviewConfirmation)
+                    {
+                        <div class="form-check">
+                            <input asp-for="ConfirmGroupReview" class="form-check-input" />
+                            <label asp-for="ConfirmGroupReview" class="form-check-label">I reviewed the include and exclusion groups before queueing this change.</label>
+                        </div>
+                        <span asp-validation-for="ConfirmGroupReview" class="field-validation-error"></span>
+                    }
+
+                    @if (Model.UsesTenantGroups && Model.HasSelectedConnection && !Model.HasAvailableGroups)
+                    {
+                        <div class="muted-note">Select a connection and load tenant groups before launching this quick win.</div>
+                    }
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary" disabled="@queueDisabled">@((isTeamsMeetingHardening || isMdoSafeLinksAndAttachments || isMdoSpamAndForwarding || isDefenderEndpointBitLockerBaseline || isDefenderEndpointCoreProtection || isDefenderEndpointBrowserHardening || isDefenderEndpointExploitProtection || isDefenderEndpointFirewallAndSmartScreen || isDefenderEndpointAttackSurfaceReduction || isDefenderEndpointOsSecurityBaseline) ? "Queue baseline" : "Queue control")</button>
+                        <a class="btn btn-outline-light" asp-controller="Jobs" asp-action="Index">Open jobs</a>
+                    </div>
+                </form>
+            }
+            else
+            {
+                <div class="template-block">
+                    <div class="template-heading">Current posture</div>
+                    <p>This playbook is now reachable from Recommendations, which means the portal can group the right controls, preserve the connection context, and give operators a single intake point for the next automation slice.</p>
+                </div>
+                <div class="template-block">
+                    <div class="template-heading">What is still manual</div>
+                    <ul class="info-list compact">
+                        <li>The worker does not execute this playbook yet.</li>
+                        <li>The recommendation mapping is live, so we can measure and refine the control set before automating it.</li>
+                        <li>The next safe milestone is promoting the lowest-risk subset into a queue-backed job.</li>
+                        @if (template.HasBlockers)
+                        {
+                            <li>This playbook has explicit blockers recorded above so the stage gap is visible to operators.</li>
+                        }
+                    </ul>
+                </div>
+                <div class="form-actions">
+                    <a class="btn btn-primary"
+                       asp-controller="Recommendations"
+                       asp-action="Index"
+                       asp-route-connectionId="@Model.ConnectionId"
+                       asp-route-playbook="@template.Key"
+                       asp-route-quickWinsOnly="true">Review mapped controls</a>
+                    <a class="btn btn-outline-light"
+                       asp-controller="Remediations"
+                       asp-action="Index"
+                       asp-route-connectionId="@Model.ConnectionId"
+                       asp-route-templateKey="block-legacy-auth">Open runnable quick win</a>
+                </div>
+            }
+        </article>
+    </div>
+</section>
+
+<section class="content-section">
+    <div class="section-heading">
+        <div>
+            <span class="eyebrow">Recent jobs</span>
+            <h2>Queue activity</h2>
+        </div>
+    </div>
+
+    @if (!Model.RecentJobs.Any())
+    {
+        <article class="info-card empty-state">
+            <div class="card-kicker">No jobs yet</div>
+            <h3>The playbook is ready for the first queued launch</h3>
+            <p>Once you queue the quick win, the worker will pick it up and the Jobs page will show queued, running, retrying, and completed state.</p>
+        </article>
+    }
+    else
+    {
+        <div class="timeline">
+            @foreach (var job in Model.RecentJobs)
+            {
+                <article class="timeline-item remediation-run-item">
+                    <div class="timeline-status">
+                        <span class="status-badge @GetJobStatusClass(job.Status)">@job.Status</span>
+                    </div>
+                    <div class="timeline-body">
+                        <h3>@job.TemplateName on @job.ConnectionDisplayName</h3>
+                        <p>@(job.Logs.LastOrDefault() ?? job.LastError ?? "Waiting for worker progress or completion.")</p>
+                        <div class="timeline-exit">Queued @job.CreatedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm") by @job.RequestedByOperatorName</div>
+                        <div class="table-subtext">Approval note: @job.ApprovalJustification</div>
+                        <div class="table-subtext">Launch mode: @job.LaunchMode</div>
+                        <div class="table-subtext">Include: @(string.IsNullOrWhiteSpace(job.IncludeGroupId) ? "All users" : job.IncludeGroupId)</div>
+                        @if (!string.IsNullOrWhiteSpace(job.ExcludeGroupId))
+                        {
+                            <div class="table-subtext">Exclude group: @job.ExcludeGroupId</div>
+                        }
+                        <div class="table-subtext">Attempt @job.AttemptCount of @job.MaxAttempts</div>
+                        @if (job.NextAttemptUtc.HasValue && job.Status == RemediationJobStatus.RetryScheduled)
+                        {
+                            <div class="table-subtext">Next attempt: @job.NextAttemptUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(job.PolicyId))
+                        {
+                            <div class="table-subtext">Policy ID: @job.PolicyId | State: @(job.PolicyState ?? "Unknown")</div>
+                        }
+                        @if (job.Logs.Any())
+                        {
+                            <ul class="info-list compact run-log-list">
+                                @foreach (var log in job.Logs)
+                                {
+                                    <li>@log</li>
+                                }
+                            </ul>
+                        }
+                    </div>
+                </article>
+            }
+        </div>
+    }
+</section>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

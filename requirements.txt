@@ -1,0 +1,532 @@
+# Securityzator zero-to-secured-tenant requirements
+# Last updated: 2026-04-13
+#
+# Goal:
+# A brand-new tenant should be able to move from initial onboarding to
+# "Securityzator can collect recommendations and apply the supported controls"
+# without hidden prerequisites.
+
+1. Scope
+- This file combines:
+  - host bootstrap requirements
+  - tenant bootstrap requirements
+  - app registration permissions
+  - workload-specific prerequisites
+  - licensing requirements
+  - current automation coverage
+  - known roadmap blockers
+
+2. Securityzator host requirements
+- Windows host capable of running IIS and Windows services.
+- .NET SDK 10.0.201 or newer.
+- ASP.NET Core Runtime 10.0.5 or newer.
+- PowerShell 7 available as `pwsh`.
+- Windows PowerShell available for older module compatibility.
+- Azure CLI installed only if delegated local bootstrap fallback will use device-code login.
+- Current host validation snapshot on `2026-04-13`:
+  - .NET SDK detected: `10.0.201`
+  - ASP.NET Core runtime detected: `10.0.5`
+  - `pwsh` detected at `C:\Users\Enforcer\AppData\Local\Microsoft\WindowsApps\pwsh.exe`
+  - Azure CLI was not detected on `PATH`, so delegated bootstrap is not currently fresh-rig ready on this machine until `az` is installed or the path is corrected
+
+3. PowerShell modules required on the host
+- `ExchangeOnlineManagement`
+  Purpose: Exchange Online / Defender for Office automation.
+- `MicrosoftTeams`
+  Purpose: Teams meeting policy automation.
+- `Microsoft.Graph.Authentication`
+  Purpose: delegated bootstrap and tenant-side app permission / role setup.
+- Current host module discovery snapshot on `2026-04-13`:
+  - `ExchangeOnlineManagement 3.9.2`
+  - `MicrosoftTeams 7.7.0`
+  - `Microsoft.Graph.Authentication 2.36.1`
+
+4. Local automation certificate requirements
+- A certificate with private key must exist in `CurrentUser\\My` or another declared store.
+- The certificate public key must be bound to the Securityzator app registration.
+- The saved Securityzator connection record must carry:
+  - `automationCertificateThumbprint`
+  - `automationCertificateStoreLocation`
+  - `automationCertificateStoreName`
+- Current local reference certificate on this host:
+  - Subject: `CN=Securityzator Exchange Automation`
+  - Thumbprint: `3BEF4D3DE3D3D96FEAD59FB1141D3C65BB1313E3`
+  - Store: `CurrentUser\\My`
+  - Expires: `2028-04-10T23:38:37Z`
+
+5. App registration model
+- Use a dedicated Entra app registration for each customer tenant, or a managed multitenant SaaS pattern when the product is ready for it.
+- Today's app model assumes:
+  - tenant ID
+  - client ID
+  - client secret for Graph and CA automation
+  - automation certificate for Exchange-backed automation
+- The app registration must receive admin consent after permission changes.
+- Stage-0 target for a brand-new tenant:
+  - Securityzator should be able to start from an Azure CLI delegated Global Administrator session, create the dedicated app registration, create the service principal, stamp the redirect URI / callback URL, generate the initial client secret, bind the automation certificate, grant admin consent, assign workload roles, and then persist the ready-to-use connection record back into the product without manual copy/paste steps.
+- Current implementation status:
+  - tenant-side permission and role stamping exists
+  - automation certificate binding exists
+  - connection persistence exists
+  - connection records now carry an operator-declared tenant license and capability profile so playbooks can distinguish license gaps from pure provider gaps
+  - full app-registration creation and secret generation from zero is still a required bootstrap milestone and should become the default onboarding path
+- Hosted-product auth direction:
+  - for production onboarding, Securityzator should use browser-based Microsoft Entra interactive sign-in plus admin-consent flows for the tenant administrator
+  - do not design the hosted app around collecting or storing Global Administrator usernames and passwords
+  - popup or redirect sign-in is the right future operator experience; device-code stays acceptable only as a bootstrap fallback for headless or terminal-first admin setups
+- Hosted-product operating model:
+  - `Bootstrap plane`
+    - tenant admin signs in interactively from the client-facing product UI
+    - Securityzator requests tenant admin consent and aligns the tenant app footprint
+    - use delegated admin sign-in only for initialization or explicit exception flows
+  - `App-only execution plane`
+    - the web app and worker should execute recurring collection and remediation through the app identity wherever the provider supports application permissions
+    - post-bootstrap, normal execution should not depend on a standing delegated Global Administrator user context
+  - `Delegated exception plane`
+    - keep just-in-time delegated admin prompts only for the provider surfaces that still do not support safe app-only automation
+    - do not model this as permanent user impersonation
+- Hosted-product storage direction:
+  - local JSON state and local key rings are acceptable for development and controlled self-hosted rollout
+  - client-facing enterprise hosting should move operators, tenant connections, jobs, runs, workers, and recommendation state into a database-backed tenant or workspace model
+  - client secrets and certificate material should move behind a vault-backed boundary before client-facing launch
+
+6. Microsoft Graph application permissions required for current Securityzator automation
+- `Application.Read.All`
+  Purpose: Conditional Access policies that target application scopes such as Azure management.
+- `Directory.Read.All`
+  Purpose: anti-phish protected-user discovery from privileged role memberships.
+- `Group.Read.All`
+  Purpose: group picker and group-targeted policy scope resolution.
+- `Organization.Read.All`
+  Purpose: Teams PowerShell app-based auth prerequisite.
+- `Policy.Read.All`
+  Purpose: read Conditional Access posture.
+- `Policy.ReadWrite.Authorization`
+  Purpose: update Microsoft Entra authorization policy settings such as default user consent posture.
+- `Policy.ReadWrite.ConsentRequest`
+  Purpose: enable and maintain the Microsoft Entra admin consent workflow.
+- `Policy.ReadWrite.ConditionalAccess`
+  Purpose: create and update Conditional Access policies.
+- `SecurityEvents.Read.All`
+  Purpose: Secure Score recommendation collection.
+- `Domain.ReadWrite.All`
+  Purpose: update the default Microsoft Entra domain password-expiration policy for the cloud-only daily-use hardening slice.
+
+7. Additional Microsoft Graph application permissions kept for roadmap coverage
+- These are not all required for today's working paths, but they are reasonable carry-forward permissions if the goal is broad tenant hardening coverage:
+  - `Device.ReadWrite.All`
+  - `Directory.Read.All`
+  - `Directory.ReadWrite.All`
+  - `Group.ReadWrite.All`
+  - `SecurityAlert.ReadWrite.All`
+  - `User.ReadWrite.All`
+
+8. Non-Graph app permissions required for current or near-term workload automation
+- `Office 365 Exchange Online -> Exchange.ManageAsApp`
+  Purpose: Exchange Online / Defender for Office unattended automation.
+
+8a. Additional Microsoft Graph application permissions for Intune readiness and endpoint rollout
+- `DeviceManagementManagedDevices.Read.All`
+  Purpose: probe managed-device readiness, device inventory presence, and later device-scoped endpoint workflows.
+- `DeviceManagementConfiguration.Read.All`
+  Purpose: probe Intune device-configuration and compliance-policy readiness before endpoint automation is enabled.
+- `DeviceManagementConfiguration.ReadWrite.All`
+  Purpose: later endpoint and Intune control execution once Securityzator starts writing compliance, configuration, or endpoint-protection policy.
+- Important note:
+  Intune licensing alone is not enough for the product path. The app also needs the device-management Graph permissions above before Intune-backed readiness or control execution can move past "license-ready but provider-blocked."
+
+9. Tenant-side Entra admin role assignments for the Securityzator service principal
+- `Exchange Administrator`
+  Required for Exchange Online / Defender for Office automation.
+- `Teams Administrator`
+  Required for Teams meeting policy automation.
+- More roles may be added later for SharePoint / Purview / other workloads, but these two are the current workload-specific app-role requirements.
+
+10. Human operator roles required during bootstrap
+- For first-time tenant preparation, use a privileged delegated admin account that can:
+  - grant admin consent to app permissions
+  - assign Entra roles to the Securityzator service principal
+  - validate workload admin access
+- In practice, `Global Administrator` works for the bootstrap.
+- After setup, day-to-day operations should use least privilege wherever possible.
+- Hosted best-practice note:
+  the client-facing product should treat this role as a bootstrap or exception-only identity, not as the long-term execution identity of the service.
+
+11. Minimum tenant licensing for the current Business Premium control set
+- `Microsoft 365 Business Premium`
+  This gives the baseline Securityzator target surface currently mapped and prioritized:
+  - Microsoft Entra ID P1
+  - Microsoft Defender for Office 365 Plan 1
+  - Microsoft Defender for Business
+  - Intune Plan 1
+- Business Premium is sufficient for:
+  - Secure Score sync
+  - the current Conditional Access quick wins
+  - Safe Links / Safe Attachments baseline work
+  - a meaningful subset of Microsoft security recommendations
+- Important operational note:
+  Business Premium can include Intune Plan 1 on paper, but endpoint-oriented recommendations can still come back thin or non-actionable if Intune entitlement is not effectively assigned, the tenant MDM authority is not active, or devices are not enrolled yet.
+
+12. Additional licensing required for broader April 2026 best-practice coverage
+- `Enterprise Mobility + Security E5`
+  This is the most relevant next-step uplift from the current Business Premium baseline.
+  It materially opens these Securityzator control paths:
+  - `Microsoft Entra ID P2`
+    Unlocks full Identity Protection and other P2 features such as:
+    - sign-in risk policies
+    - user risk policies
+    - Privileged Identity Management design paths for later admin-hygiene controls
+  - `Microsoft Defender for Cloud Apps`
+    Unlocks the broader Cloud Apps onboarding, discovery, app governance, and connected-SaaS control families.
+  - `Microsoft Defender for Identity`
+    Unlocks the licensing side of Defender for Identity onboarding and the AD / AD CS / Entra Connect hardening families.
+  - `Azure Information Protection Premium P2`
+    Unlocks the advanced information protection path used by auto-labeling and recommended classification controls.
+- `Microsoft Entra ID P2` or `Microsoft Entra Suite`
+  Required if the tenant does not take EMS E5 but still wants full Microsoft Entra ID Protection risk-policy automation.
+- `Microsoft Defender for Identity` standalone or equivalent suite inclusion
+  Required for Defender for Identity onboarding and sensor-based identity controls when EMS E5 is not the chosen route.
+- `Microsoft Defender for Cloud Apps` standalone or equivalent suite inclusion
+  Required when EMS E5 is not the chosen route and the tenant still wants full Cloud Apps discovery, governance, and SaaS protection.
+- `Microsoft 365 E5 / A5 / G5` or `Microsoft Defender Suite`
+  Required for Safe Documents.
+  Safe Documents is not included in Defender for Office 365 Plan 1 or Plan 2 alone, and EMS E5 does not add it.
+- Additional Purview / compliance licensing may be required before future data-protection playbooks can be fully automated.
+- Important scope note:
+  EMS E5 does not, by itself, add the missing workload administration surfaces for Exchange, SharePoint, or Teams, and it does not upgrade Intune beyond Plan 1. Business Premium already includes Intune Plan 1, so EMS E5 helps most on identity, Cloud Apps, Defender for Identity, and advanced information protection rather than core device management.
+- Practical alternate working bundle:
+  - `Microsoft 365 Business Basic` + `Microsoft Entra ID P2` + `Intune Plan 1` + `Microsoft 365 E5 Security` is a valid Securityzator target profile for the current identity, endpoint, Defender for Cloud Apps, and Defender for Identity paths.
+  - With that bundle, Securityzator should treat endpoint capability as satisfied by `Defender for Endpoint Plan 2`; a separate legacy `ATP` add-on is not required for the current Defender work.
+  - Important nuance:
+    if a tenant mixes `Defender for Business` and `Defender for Endpoint Plan 2` across the same population, Microsoft can keep the tenant in the Defender for Business experience until licensing is cleaned up, so keep the endpoint entitlement model consistent where possible.
+
+13. Fresh-tenant prerequisites before Securityzator can fully harden it
+- The tenant must be provisioned and reachable.
+- Exchange Online must be active if mail protection baselines are expected.
+- Teams must be active if Teams policy baselines are expected.
+- At least one emergency / break-glass admin account should exist and be excluded from broad user-targeted CA policies.
+- Administrator groups for scoped rollouts should exist if policies will target specific populations instead of tenant-wide assignment.
+- Users must have usable MFA-capable methods registered before broad MFA enforcement is switched from report-only to production enforcement.
+- Devices must be onboarded to Intune / Defender for Business for endpoint-oriented recommendations to become truly actionable.
+- The tenant must have effective Intune entitlement on the target users or devices, and MDM authority must be active, before endpoint and device-compliance signals can be trusted as complete.
+- Hybrid identity servers must exist and be onboarded before Defender for Identity recommendations can be completed.
+
+14. Workload-specific prerequisites by control family
+- Conditional Access / Entra:
+  - Graph app permissions in section 6
+  - emergency access exclusions defined
+  - target groups available where scoped rollout is required
+  - current runnable slice: `entra-daily-use-hardening`
+    - uses Microsoft Graph `authorizationPolicy`, `adminConsentRequestPolicy`, and default `domain` update APIs
+    - disables default user consent to apps, enables the admin consent workflow, and keeps the default domain password-expiration posture aligned to never expire
+    - requires `Policy.ReadWrite.Authorization`, `Policy.ReadWrite.ConsentRequest`, and `Domain.ReadWrite.All`
+    - seeds existing Global Administrators as admin-consent reviewers only when the tenant has no reviewer list configured yet
+    - current tenant testing on `2026-04-13` confirmed reads succeed with the existing app, but direct apply still fails with `403 Authorization_RequestDenied` until those three write permissions are actually present in the issued app token
+    - this is a live tenant configuration change, not a report-only assessment
+  - current runnable slice: `entra-identity-hygiene-baseline`
+    - uses Microsoft Graph `authorizationPolicy`, `adminConsentRequestPolicy`, `domains`, and `directoryRoles`
+    - assesses tenant-wide app-consent posture, admin consent workflow, self-service password reset, default-domain password expiration posture, and active Global Administrator count
+    - records hybrid and governance-heavy controls such as password hash sync, on-prem password protection, separate admin identities, and third-party integrations as explicit follow-up rather than pretending they are direct-apply toggles
+    - this is a queued tenant assessment workflow, not a tenant configuration change
+- Defender for Office / Exchange:
+  - `Exchange.ManageAsApp`
+  - `Exchange Administrator` role on the app service principal
+  - automation certificate configured in the saved tenant connection
+  - Exchange Online and Defender for Office workloads provisioned
+  - Exchange organization customization must be enabled before custom protection policies can be created; Securityzator should treat this as a one-time prerequisite and clear it automatically where possible
+  - current tenant testing shows custom protection policy authoring works with a delegated Exchange session from the Azure CLI bootstrap account, but not yet with the current app-only Exchange path
+  - current tenant testing also shows that token-backed Exchange sessions can expose a reduced `Set-AntiPhishPolicy` parameter surface; when anti-phish automation needs the fuller cmdlet surface, run the helper from `pwsh` with `-UseExchangeDeviceLogin`
+  - as of `2026-04-11`, Securityzator has not found a supported Microsoft Graph JSON payload for Safe Links or Safe Attachments in the Microsoft Graph docs, metadata, or SDK source map; the supported configuration surfaces remain the Microsoft Defender portal and Exchange Online PowerShell
+  - current tenant testing shows the delegated Azure CLI Exchange session can apply hosted spam / forwarding policies, but the Safe Links and Safe Attachments cmdlets are not yet surfacing consistently in the token-backed session; keep the delegated helper, but treat Defender portal or a fuller Exchange admin session as the fallback until that session-mode blocker is resolved
+- Teams:
+  - `Organization.Read.All`
+  - `Teams Administrator` role on the app service principal
+  - MicrosoftTeams PowerShell module installed on the host
+- Identity Protection:
+  - Entra P2, EMS E5, or Entra Suite
+  - risk policy design decisions approved
+  - self-remediation and break-glass exclusions planned
+- Defender for Cloud Apps:
+  - EMS E5, standalone Defender for Cloud Apps, or equivalent suite inclusion
+  - cloud discovery can exist as a narrower subset in Entra P1 / EMS E3 class licensing, but the full Defender for Cloud Apps control path still needs the Defender for Cloud Apps product
+  - initial onboarding owner identified
+  - app connector and log-source decisions made
+- Defender for Identity:
+  - EMS E5, standalone Defender for Identity, or equivalent suite inclusion
+  - supported servers identified
+  - sensors deployed on required domain controllers and related servers
+- Endpoint / Defender for Business:
+  - effective Intune entitlement assigned to the users or devices in scope
+  - devices enrolled and onboarded
+  - Intune tenant activation / MDM authority confirmed
+  - Intune / device management posture available
+  - Microsoft Graph `DeviceManagementManagedDevices.Read.All`
+  - Microsoft Graph `DeviceManagementConfiguration.Read.All`
+  - Microsoft Graph `DeviceManagementConfiguration.ReadWrite.All`
+  - a pilot Microsoft Entra group available for staged Intune baseline assignment
+  - current runnable slice: `defender-endpoint-core-protection`
+    - uses Microsoft Graph Intune `deviceManagement/deviceConfigurations`
+    - creates or updates `SS-AUTO | Endpoint core protection baseline`
+    - creates or updates companion profile `SS-AUTO | Endpoint core protection hardening`
+    - assigns both to the selected pilot group with an optional exclusion group
+    - currently covers real-time monitoring, behavior monitoring, network inspection, download or archive or email or removable-drive scanning, cloud-delivered protection, PUA block mode, tamper protection, network protection, and monitor-all-files scanning
+    - residual follow-up remains for EDR in block mode, update-governance, and broader Defender cloud-connectivity validation
+  - current runnable slice: `defender-endpoint-bitlocker-baseline`
+    - uses Microsoft Graph Intune `deviceManagement/deviceConfigurations`
+    - creates or updates `SS-AUTO | Endpoint BitLocker baseline`
+    - assigns it to the selected pilot group with an optional exclusion group
+    - follows the profile assignment with Microsoft Graph beta `deviceManagement/managedDeviceEncryptionStates` assessment for the selected pilot scope
+    - currently covers device encryption policy, additional authentication at startup, TPM-plus-PIN startup posture, a minimum startup PIN length of six characters, BitLocker resume-protection follow-up, and BitLocker drive-readiness or compatibility visibility
+    - live pilot validation succeeded on 2026-04-12 and produced configuration `2216e3ef-e716-4e16-821f-1c7eaee992d6`
+    - live rollout-health validation on 2026-04-13 showed the managed profile already aligned while the pilot VM still reported `notEncrypted`, `notAssigned`, `notReady`, and `osVolumeUnprotected`, which is the exact follow-up Securityzator now surfaces instead of leaving as a generic note
+    - residual follow-up remains for actual encryption completion on devices, recovery escrow verification, and hands-on remediation for TPM, firmware, or readiness blockers because those still need device-level action beyond policy creation
+  - current runnable slice: `defender-endpoint-credential-and-elevation-hardening`
+    - uses Microsoft Graph Intune `deviceManagement/deviceConfigurations` with `windows10CustomConfiguration`
+    - creates or updates `SS-AUTO | Endpoint credential and elevation hardening`
+    - assigns it to the selected pilot group with an optional exclusion group
+    - currently covers virtualization-based security enablement, Credential Guard without UEFI lock, WDigest disablement, LSA protected-process posture without UEFI lock, blocking local storage of passwords and credentials for network authentication, keeping Admin Approval Mode enabled, denying elevation requests for standard users, forcing secure-desktop elevation prompts, only elevating signed and validated executables, enabling Safe DLL search mode, hiding administrator-account enumeration on elevation prompts, applying UAC restrictions to local accounts on network logons, and disabling always-install-elevated Windows Installer posture
+    - residual follow-up remains for WinRM Basic authentication, Remote Assistance, and adjacent remote-management or credential-hardening controls that still need broader CSP or ADMX-backed handling
+  - current runnable slice: `defender-endpoint-remote-access-and-network-hardening`
+    - uses Microsoft Graph Intune `deviceManagement/deviceConfigurations` with `windows10CustomConfiguration`
+    - creates or updates `SS-AUTO | Endpoint remote access and network hardening`
+    - assigns it to the selected pilot group with an optional exclusion group
+    - currently covers disabling WinRM Basic authentication for the client and service, disabling Offer and Solicited Remote Assistance, prohibiting Network Bridge configuration, requiring domain users to elevate when changing a network location, prohibiting Internet Connection Sharing on the domain network, disabling AutoPlay for non-volume devices, turning off AutoPlay for all drives, disabling AutoRun command execution, retiring the SMBv1 client and server, applying highest-protection IPv4 and IPv6 source-routing posture, and requiring TLS for Remote Desktop connections
+    - live pilot validation succeeded on 2026-04-12 and produced configuration `9f55036d-d866-48fc-b9cd-f2f4993e1106`
+    - residual follow-up remains for broader browser-adjacent, Adobe, and compatibility-sensitive host-network controls that still need broader CSP or application-specific handling
+  - current runnable slice: `defender-endpoint-browser-hardening`
+    - uses Microsoft Graph Intune `deviceManagement/groupPolicyConfigurations`
+    - creates or updates `SS-AUTO | Endpoint browser hardening baseline`
+    - assigns it to the selected pilot group with an optional exclusion group
+    - currently covers Chrome background-app disablement, AutoFill disablement for addresses and credit cards, password-manager disablement, and third-party cookie blocking
+    - residual follow-up remains for the removed Chrome outdated-plugins policy and Adobe JavaScript/Flash controls because they still need a different software-aware policy surface
+  - current runnable slice: `defender-endpoint-browser-and-adobe-policy-surface-readiness`
+    - uses Microsoft Graph beta `deviceManagement/groupPolicyDefinitions` and `deviceManagement/groupPolicyUploadedDefinitionFiles`
+    - assesses whether the tenant still exposes a durable Chrome outdated-plug-in policy definition and whether Adobe Acrobat or Reader ADMX-backed JavaScript and Flash policies are available in Intune
+    - live readiness validation on 2026-04-13 showed no durable Chrome outdated-plug-in definition and no Adobe uploaded ADMX definition files on the current tenant
+    - this slice is assessment-only; it turns six previously vague browser-app blockers into concrete tenant findings instead of pretending the controls are already covered
+  - current runnable slice: `defender-endpoint-firewall-and-smartscreen`
+    - uses Microsoft Graph Intune `deviceManagement/deviceConfigurations` plus `groupPolicyConfigurations`
+    - creates or updates `SS-AUTO | Endpoint firewall and SmartScreen baseline`
+    - creates or updates companion group policy profile `SS-AUTO | Endpoint Edge SmartScreen baseline`
+    - assigns both to the selected pilot group with an optional exclusion group
+    - currently covers Microsoft Defender Firewall enablement across domain or private or public profiles, inbound firewall notification suppression, public-profile rule merge tightening, Windows SmartScreen app/file checking with file override blocked, Microsoft Edge SmartScreen site checking, Microsoft Edge SmartScreen download checks, and Microsoft Edge potentially unwanted app blocking
+    - live pilot validation succeeded on 2026-04-12 and produced configurations `fe7fd015-2566-4af7-ac6c-98d069903fdf` and `4176e103-2b46-410f-b257-8004351f8d5a`
+    - residual follow-up remains for broader browser-specific controls because they belong in narrower browser or application baselines
+  - current runnable slice: `defender-endpoint-exploit-protection`
+    - uses Microsoft Graph Intune `deviceManagement/deviceConfigurations` with `windows10EndpointProtectionConfiguration`
+    - creates or updates `SS-AUTO | Endpoint exploit protection baseline`
+    - assigns it to the selected pilot group with an optional exclusion group
+    - currently covers a Securityzator-managed system-level exploit protection XML for DEP, ASLR, Control Flow Guard, SEHOP, and heap corruption termination, with Security Center override blocked
+    - residual follow-up remains for reboot-sensitive rollout validation and app-specific exploit mitigations such as Adobe- and browser-specific exploit settings
+  - current runnable slice: `defender-endpoint-attack-surface-reduction`
+    - uses Microsoft Graph Intune `deviceManagement/deviceConfigurations`
+    - creates or updates `SS-AUTO | Endpoint attack surface reduction baseline`
+    - assigns it to the selected pilot group with an optional exclusion group
+    - currently covers Office child-process or executable-content blocking, script or macro abuse rules, email-executable blocking, WMI persistence blocking, prevalence-based executable blocking, USB abuse blocking, ransomware protection, controlled folder access, and LSASS credential-theft protection
+    - residual follow-up remains for Flash, Adobe JavaScript, ActiveX, Safe Mode, webshell, and other browser or server-specific ASR-adjacent items
+  - current runnable slice: `defender-endpoint-os-security-baseline`
+    - uses Microsoft Graph Intune `deviceManagement/deviceConfigurations`
+    - creates or updates `SS-AUTO | Endpoint OS security baseline`
+    - assigns it to the selected pilot group with an optional exclusion group
+    - currently covers local-account disablement, machine inactivity lock, blank-password remote-logon blocking, LAN Manager hash suppression, anonymous share or SAM enumeration hardening, SMB signing, unencrypted SMB password blocking, and NTLMv2-oriented LAN Manager authentication posture
+    - live pilot validation succeeded on 2026-04-12 and produced configuration `09d789e8-dadf-4916-a337-19176417c14d`
+    - residual follow-up remains for password-policy items, account-lockout depth, server-oriented share posture, LDAP hardening, Remote Registry, full NTLM retirement, and UEFI Secure Boot validation because those controls need either a broader baseline stance or a different provider surface
+  - current runnable slice: `defender-endpoint-sensor-and-agent-health`
+    - uses Microsoft Graph Intune `managedDevices`, `windowsProtectionState`, and `configurationPolicies`
+    - assesses scoped Windows devices in the selected pilot group with an optional exclusion group
+    - currently covers stale Defender telemetry detection, overdue signature follow-up, missing core component health data, Intune endpoint-detection-and-response onboarding-policy visibility, and WSL plug-in readiness follow-up for the remaining sensor or agent-health findings
+    - this is a queued assessment workflow, not a tenant configuration change
+    - connector-based Defender for Endpoint onboarding write automation is still a separate next stage and remains blocked until tenant connector readiness is confirmed
+    - WSL plug-in coverage is assessment-first: Securityzator can confirm cloud-side onboarding coverage and host telemetry readiness, but Microsoft still requires local validation for WSL 2.0.7.0 or newer, an active distro, and actual plug-in installation on the pilot host
+  - the archived `microsoft/MicrosoftDefenderForEndpoint-API-Python` repository is useful for sample action flows, but the canonical source for endpoint API behavior should remain current Microsoft Defender for Endpoint API docs rather than the archived sample repo
+- SharePoint / Purview:
+  - workload admin model and licensing confirmed
+  - advanced auto-labeling and recommended-classification paths need Azure Information Protection Premium P2 or equivalent Purview licensing; EMS E5 provides the AIP P2 side of that path
+  - provider automation still to be completed in product
+
+15. Bootstrap entry points and hosting modes
+- Hosted enterprise target:
+  - the primary customer path should start in the Securityzator UI with browser-based Microsoft Entra sign-in and tenant admin consent
+  - Azure CLI and device-code login are local fallback tools, not the intended client-facing onboarding experience
+  - app-only execution should carry the product after onboarding wherever the provider allows it
+- Local or managed fallback:
+  - the scripts below remain valid for development, managed rollout, support engineering, and break-glass onboarding
+- Repo bootstrap script:
+  - `.\bootstrap.ps1`
+- Targeted Exchange prerequisite script:
+  - `.\tools\Grant-ExchangeTenantRequirements.ps1`
+- Targeted delegated Exchange anti-phish baseline script:
+  - `.\tools\Apply-ExchangeAntiPhishBaseline.ps1`
+- Targeted delegated Exchange collaboration and mailbox baseline script:
+  - `.\tools\Apply-ExchangeCollaborationMailboxBaseline.ps1`
+- Targeted delegated Exchange baseline script:
+  - `.\tools\Apply-ExchangeSpamAndForwardingBaseline.ps1`
+- Targeted delegated Exchange Safe Links / Safe Attachments script:
+  - `.\tools\Apply-ExchangeSafeLinksAndAttachmentsBaseline.ps1`
+- Local smoke runner for queued templates:
+  - `dotnet run --project .\tools\Securityzator.SmokeRunner -- --templateKey entra-daily-use-hardening`
+  - `dotnet run --project .\tools\Securityzator.SmokeRunner -- --templateKey entra-identity-hygiene-baseline`
+  - `dotnet run --project .\tools\Securityzator.SmokeRunner -- --templateKey defender-endpoint-core-protection --includeGroupId <pilot-group-object-id>`
+  - `dotnet run --project .\tools\Securityzator.SmokeRunner -- --templateKey defender-endpoint-bitlocker-baseline --includeGroupId <pilot-group-object-id>`
+  - `dotnet run --project .\tools\Securityzator.SmokeRunner -- --templateKey defender-endpoint-browser-and-adobe-policy-surface-readiness`
+  - `dotnet run --project .\tools\Securityzator.SmokeRunner -- --templateKey defender-endpoint-credential-and-elevation-hardening --includeGroupId <pilot-group-object-id>`
+  - `dotnet run --project .\tools\Securityzator.SmokeRunner -- --templateKey defender-endpoint-remote-access-and-network-hardening --includeGroupId <pilot-group-object-id>`
+  - `dotnet run --project .\tools\Securityzator.SmokeRunner -- --templateKey defender-endpoint-browser-hardening --includeGroupId <pilot-group-object-id>`
+  - `dotnet run --project .\tools\Securityzator.SmokeRunner -- --templateKey defender-endpoint-exploit-protection --includeGroupId <pilot-group-object-id>`
+  - `dotnet run --project .\tools\Securityzator.SmokeRunner -- --templateKey defender-endpoint-firewall-and-smartscreen --includeGroupId <pilot-group-object-id>`
+  - `dotnet run --project .\tools\Securityzator.SmokeRunner -- --templateKey defender-endpoint-attack-surface-reduction --includeGroupId <pilot-group-object-id>`
+  - `dotnet run --project .\tools\Securityzator.SmokeRunner -- --templateKey defender-endpoint-os-security-baseline --includeGroupId <pilot-group-object-id>`
+  - `dotnet run --project .\tools\Securityzator.SmokeRunner -- --templateKey defender-endpoint-sensor-and-agent-health --includeGroupId <pilot-group-object-id>`
+- Example local zero-to-ready fallback run using local `Auth.txt` and Azure CLI device-code auth:
+  - `.\bootstrap.ps1 -Full -UseAuthTxt -UseAzureCliDeviceCode -ConnectionId b663326b-f424-43b7-8f47-8ef0a007a9b5`
+- Recommended fresh-host staged fallback order:
+  - 1. Sign in once with Azure CLI for the tenant bootstrap account:
+    - `az login --tenant <tenant-id> --allow-no-subscriptions --use-device-code`
+  - 2. If the tenant does not already have a dedicated Securityzator app registration, the bootstrap target state is:
+    - create the app registration
+    - create the service principal
+    - stamp the callback / redirect URL
+    - generate the initial client secret
+    - persist the resulting connection details into Securityzator
+  - 3. Install modules and bind the saved Exchange automation certificate:
+    - `powershell -ExecutionPolicy Bypass -File .\bootstrap.ps1 -InstallModules -BindExchangeCertificate -UseAuthTxt -ConnectionId <connection-id> -IncludeExchange $true -IncludeTeams $false`
+  - 4. Stamp the tenant-side Exchange prerequisites through the targeted helper:
+    - `powershell -ExecutionPolicy Bypass -File .\tools\Grant-ExchangeTenantRequirements.ps1 -UseAuthTxt -UseAzureCliDeviceCode -Assign`
+  - 5. Verify the app now has:
+    - `Office 365 Exchange Online / Exchange.ManageAsApp`
+    - `Exchange Administrator`
+    - bound automation certificate metadata on the saved connection
+  - 6. If the target baseline needs Exchange custom protection policies, use the delegated Exchange bootstrap helper from the Azure CLI GA session:
+    - `powershell -ExecutionPolicy Bypass -File .\tools\Apply-ExchangeAntiPhishBaseline.ps1 -UseAuthTxt -UseAzureCliDeviceCode`
+    - if the anti-phish helper needs the fuller Exchange cmdlet surface, rerun it from PowerShell 7 with device login:
+      - `pwsh -NoProfile -ExecutionPolicy Bypass -File .\tools\Apply-ExchangeAntiPhishBaseline.ps1 -UseAuthTxt -UseExchangeDeviceLogin`
+    - `powershell -ExecutionPolicy Bypass -File .\tools\Apply-ExchangeCollaborationMailboxBaseline.ps1 -UseAuthTxt -UseAzureCliDeviceCode`
+    - `powershell -ExecutionPolicy Bypass -File .\tools\Apply-ExchangeSpamAndForwardingBaseline.ps1 -UseAuthTxt -UseAzureCliDeviceCode`
+    - `powershell -ExecutionPolicy Bypass -File .\tools\Apply-ExchangeSafeLinksAndAttachmentsBaseline.ps1 -UseAuthTxt -UseAzureCliDeviceCode`
+  - 7. Re-run the targeted smoke for the Defender baseline you want to activate.
+  - 8. Run the Teams-only bootstrap later when you are ready to enable Teams automation:
+    - `powershell -ExecutionPolicy Bypass -File .\bootstrap.ps1 -InstallModules -UseAuthTxt -ConnectionId <connection-id> -GrantTenantRequirements -AssignDirectoryRoles -UseAzureCliDeviceCode -IncludeExchange $false -IncludeTeams $true`
+- Bootstrap behavior notes for a brand-new rig:
+  - The script is designed to reuse an existing Azure CLI session when the tenant matches, so the normal zero-to-ready path should not keep prompting for repeated sign-in.
+  - The bootstrap writes a short-lived local auth cache file `.bootstrap-auth.json` in the repo during delegated tenant setup and clears it on exit.
+  - If PowerShell script execution is blocked, use a process-scoped bypass for the current shell rather than changing machine policy:
+    - `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`
+- The bootstrap script is intended to:
+  - install missing host modules
+  - bind the Exchange automation certificate to the Entra app and saved connection
+  - reuse or request delegated admin login
+  - grant required app permissions
+  - assign `Exchange Administrator` and `Teams Administrator` to the service principal
+
+16. Current Securityzator functionality that is already live
+- Product login and saved tenant connections.
+- Secure Score recommendation collection from Microsoft 365.
+- Recommendation persistence and filtering.
+- Worker queue and job history.
+- Conditional Access remediation workflows.
+- Implemented and validated CA controls include:
+  - block legacy auth
+  - require MFA for admins
+  - require MFA for all users
+  - require phishing-resistant MFA for privileged admins
+  - require MFA for guest access
+  - require MFA for Microsoft admin portals
+  - require MFA for Azure management
+  - require MFA on risky sign-ins
+  - require password change for high-risk users
+  - secure security info registration
+
+17. Current non-CA automation state
+- Current validated platform snapshot on `2026-04-13`:
+  - `.\build.ps1` passed
+  - Graph source-map validator passed
+  - control catalog validator passed
+  - Secure Score coverage validator reports `440 / 440` mapped, `215 / 440` runnable now, `225` broader-family mapped, `0` unmapped, and `0` stored mapping drift after backfill
+- Entra direct-apply and assessment implementation now exists:
+  - `entra-identity-hygiene-baseline`
+  - `entra-daily-use-hardening`
+  - current blocker on the smoke tenant is not product code; it is the missing issued Graph write roles for the daily-use hardening path
+- Defender for Office baseline implementation exists:
+  - Anti-phish baseline
+  - Safe Links baseline
+  - Safe Attachments baseline
+- Exchange collaboration and mailbox baseline
+  - SharePoint / OneDrive / Teams protection switch
+- Teams meeting hardening implementation exists.
+- Both non-CA paths still depend on their tenant-side app-role prerequisites being fully stamped and validated.
+- If the tenant adds EMS E5, the next control families Securityzator can meaningfully pursue are:
+  - Defender for Cloud Apps discovery, app governance, and connected-SaaS hardening
+  - Defender for Identity onboarding and AD / AD CS / Entra Connect hardening
+  - advanced Purview information-protection workflows tied to AIP P2 features
+- If the tenant also fixes Intune entitlement or activation gaps, endpoint and device-oriented Secure Score controls should produce more reliable posture signals for the later Defender for Endpoint and Intune-backed control families.
+
+18. What a brand-new tenant needs if the goal is "fully securityized" beyond current automation
+- Business Premium alone is enough for a strong first-stage posture, but not enough for the full April 2026 Microsoft best-practice surface.
+- For the broader target posture, plan for:
+  - Entra P2 or Entra Suite
+  - Defender for Identity licensing and sensor deployment
+  - Safe Documents-capable licensing
+  - endpoint onboarding and management
+  - future SharePoint / Purview provider support in Securityzator
+
+19. Known roadmap gaps that are not just permission problems
+- SharePoint, Purview, and some Defender workload providers are not fully automated in the product yet.
+- Some recommendation families are mapped and staged but still guided or semi-manual rather than fully executable.
+- Tenant hardening that depends on server deployment, endpoint onboarding, or premium licensing cannot be solved by Graph permissions alone.
+- Client-facing hosting gaps still open:
+  - local file-backed state instead of database-backed tenant/workspace storage
+  - local operator-account bootstrap instead of enterprise identity-backed operator login
+  - shared filesystem Data Protection and worker-state assumptions instead of cloud-friendly shared backing services
+  - local host certificate-store assumptions for some workload providers
+  - Azure CLI and `Auth.txt` assumptions still present in the local fallback path
+  - some workload providers still require delegated exception handling rather than clean app-only execution
+
+20. Practical definition of "ready to securityize a fresh tenant"
+- Ready for today's supported scope means:
+  - host requirements are met
+  - bootstrap script can run
+  - app permissions are consented
+  - Exchange and Teams app roles are assigned where needed
+  - automation certificate is bound
+  - Business Premium workloads are provisioned
+  - break-glass exclusions are prepared
+- Ready for broader best-practice coverage means all of the above plus:
+  - premium licensing for risk-based identity and Safe Documents scenarios
+  - Defender for Identity rollout
+  - endpoint onboarding
+  - future workload providers as Securityzator adds them
+- Ready for client-facing enterprise hosting means all of the above plus:
+  - browser-based tenant onboarding inside the product
+  - database-backed tenant/workspace storage
+  - vault-backed secret and certificate handling
+  - enterprise identity-backed operator login
+  - stateless web tier with worker-host separation
+  - app-only execution as the default path and delegated admin prompts only for explicit exceptions
+
+21. Permanent Microsoft Graph source map
+- `graph.source-map.psd1` is the machine-readable map of the Microsoft-owned sources that Securityzator should trust when permissions, endpoint behavior, or schema stability matter.
+- Canonical source split:
+  - `microsoft-graph-docs-contrib` for endpoint permissions and documented request/response behavior
+  - `msgraph-metadata` for schema permanence and path validation
+  - `msgraph-sdk-powershell` for examples and operator ergonomics, not bootstrap truth when SDK behavior diverges
+- `bootstrap.requirements.psd1` should remain the curated bootstrap subset derived from `graph.source-map.psd1`.
+- `control-catalog.map.psd1` should remain the machine-readable contract for the surfaced Business Premium recommendation cards and the extended template families that keep control routing durable.
+- `docs/microsoft-graph-source-map.md` explains the update workflow so new control mappings stay tied to Microsoft-owned guidance instead of one-off notes.
+
+## Host trust and Defender posture
+- Use `pwsh` as the default operator shell for Securityzator automation.
+- Prefer compiled .NET helpers for validation, export, smoke, and bootstrap logic so the host sees normal signed binaries instead of large ad hoc scripts.
+- Keep PowerShell wrappers thin and focused on Microsoft admin modules that require PowerShell, such as Exchange Online or Teams.
+- Treat Authenticode signing as the rollout target for `.ps1`, `.psm1`, and `.psd1` files.
+- Prefer publisher or managed-path allow rules in App Control / AppLocker over broad antivirus exclusions.
+- Keep `ExecutionPolicy Bypass` limited to explicit local bootstrap or troubleshooting, not the long-term operator path.
+- See `docs/host-trust-and-defender.md` for the fuller operating model.
+
+## Microsoft Graph API version posture
+- Keep `v1.0` as the primary Microsoft Graph surface for stable platform calls.
+- Keep `beta` configured as a fallback surface for platform calls that already work in Securityzator when Microsoft moves endpoint shape or property coverage ahead of `v1.0`.
+- Do not build brand-new production-only features on undocumented beta-only behavior without recording the dependency and a fallback plan.
+
+## Companion docs
+- `docs/deployment-plan.md` captures the topdown deployment flow plus the current host module inventory.
+- `docs/permissions-topdown.md` captures the current permission stack, service-principal roles, and roadmap-only permissions in one reviewable place.

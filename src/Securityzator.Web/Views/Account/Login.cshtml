@@ -1,0 +1,53 @@
+@model Securityzator.Web.Models.Account.LoginViewModel
+@{
+    ViewData["Title"] = "Sign In";
+}
+
+<section class="auth-shell">
+    <article class="auth-card">
+        <span class="eyebrow">Securityzator</span>
+        <h1>Sign in to the operator console</h1>
+        <p class="section-copy">Milestone 2 moves operator auth into the application so tenant app credentials can be managed entirely from the server boundary.</p>
+
+        <div asp-validation-summary="ModelOnly" class="validation-summary"></div>
+
+        <form asp-action="Login" method="post" class="stack-form">
+            @Html.AntiForgeryToken()
+            <input asp-for="ReturnUrl" type="hidden" />
+
+            <div class="form-field">
+                <label asp-for="Email"></label>
+                <input asp-for="Email" class="form-control" autocomplete="username" />
+                <span asp-validation-for="Email" class="field-validation-error"></span>
+            </div>
+
+            <div class="form-field">
+                <label asp-for="Password"></label>
+                <input asp-for="Password" class="form-control" autocomplete="current-password" />
+                <span asp-validation-for="Password" class="field-validation-error"></span>
+            </div>
+
+            <div class="form-check">
+                <input asp-for="RememberMe" class="form-check-input" />
+                <label asp-for="RememberMe" class="form-check-label"></label>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Sign in</button>
+                @if (Model.RegistrationOpen)
+                {
+                    <a class="btn btn-outline-light" asp-action="Register">Create initial workspace</a>
+                }
+            </div>
+        </form>
+
+        @if (Model.RegistrationOpen)
+        {
+            <p class="auth-note">No operator account exists yet. Create the initial workspace and operator login to finish the first-time setup.</p>
+        }
+    </article>
+</section>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

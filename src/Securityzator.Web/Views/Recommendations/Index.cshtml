@@ -1,0 +1,524 @@
+@using Securityzator.Application.Recommendations
+@model Securityzator.Web.Models.Recommendations.RecommendationsPageViewModel
+@{
+    ViewData["Title"] = "Recommendations";
+    var snapshot = Model.SelectedSnapshot;
+}
+
+@functions {
+    private static string GetStatusLabel(RecommendationSyncStatus status)
+    {
+        return status switch
+        {
+            RecommendationSyncStatus.Succeeded => "Healthy",
+            RecommendationSyncStatus.Failed => "Needs attention",
+            _ => "Never synced"
+        };
+    }
+
+    private static string GetStatusClass(RecommendationSyncStatus status)
+    {
+        return status switch
+        {
+            RecommendationSyncStatus.Succeeded => "success",
+            RecommendationSyncStatus.Failed => "failed",
+            _ => "idle"
+        };
+    }
+
+    private static string GetLicenseStateLabel(Securityzator.Application.Portal.LicenseRequirementState state)
+    {
+        return state switch
+        {
+            Securityzator.Application.Portal.LicenseRequirementState.Satisfied => "License-ready",
+            Securityzator.Application.Portal.LicenseRequirementState.Missing => "License gap",
+            Securityzator.Application.Portal.LicenseRequirementState.Unknown => "License unknown",
+            _ => "No special license gate"
+        };
+    }
+
+    private static string GetLicenseStateClass(Securityzator.Application.Portal.LicenseRequirementState state)
+    {
+        return state switch
+        {
+            Securityzator.Application.Portal.LicenseRequirementState.Satisfied => "success",
+            Securityzator.Application.Portal.LicenseRequirementState.Missing => "failed",
+            Securityzator.Application.Portal.LicenseRequirementState.Unknown => "retry",
+            _ => "idle"
+        };
+    }
+}
+
+<section class="content-section">
+    <div class="section-heading">
+        <div>
+            <span class="eyebrow">Milestone 3 live slice</span>
+            <h1>Recommendation collection</h1>
+            <p class="section-copy">Secure Score collection now runs through the backend so the portal can validate a saved tenant connection, cache the latest snapshot, and keep operators out of the prototype page.</p>
+        </div>
+        <div class="shell-pill">@Model.WorkspaceName</div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+    {
+        <div class="alert-shell success">@Model.StatusMessage</div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+    {
+        <div class="alert-shell error">@Model.ErrorMessage</div>
+    }
+
+    @if (!Model.HasConnections)
+    {
+        <article class="info-card empty-state">
+            <div class="card-kicker">No connections yet</div>
+            <h2>Create the first Azure connection to unlock recommendation sync</h2>
+            <p>The backend recommendation pipeline only runs against saved tenant profiles. Once a connection exists, this page can validate it, pull Secure Score controls, and cache the latest snapshot.</p>
+            <div class="form-actions compact">
+                <a class="btn btn-primary" asp-controller="Connections" asp-action="Index">Create a connection</a>
+            </div>
+        </article>
+    }
+    else
+    {
+        <div class="card-grid connection-grid">
+            @foreach (var connection in Model.Connections)
+            {
+                <article class="info-card connection-card recommendation-connection-card">
+                    <div class="card-kicker">Tenant @connection.TenantId</div>
+                    <h3>@connection.ConnectionDisplayName</h3>
+                    <div class="connection-meta">
+                        <div class="meta-row">
+                            <div>
+                                <div class="meta-label">Sync status</div>
+                                <div class="meta-value">
+                                    <span class="status-badge @GetStatusClass(connection.SyncStatus)">@GetStatusLabel(connection.SyncStatus)</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="meta-row">
+                            <div>
+                                <div class="meta-label">Latest snapshot</div>
+                                <div class="meta-value">@connection.RecommendationCount recommendation@(connection.RecommendationCount == 1 ? "" : "s")</div>
+                            </div>
+                        </div>
+                        <div class="meta-row">
+                            <div>
+                                <div class="meta-label">Last success</div>
+                                <div class="meta-value">@(connection.LastSuccessUtc.HasValue ? connection.LastSuccessUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm") : "Not yet synced")</div>
+                            </div>
+                        </div>
+                        <div class="meta-row">
+                            <div>
+                                <div class="meta-label">Secret posture</div>
+                                <div class="meta-value">@(connection.HasStoredSecret ? "Protected and ready for backend token flow" : "Missing secret")</div>
+                            </div>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(connection.LastError))
+                        {
+                            <div class="meta-row">
+                                <div>
+                                    <div class="meta-label">Last error</div>
+                                    <div class="meta-value pre-wrap">@connection.LastError</div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                    <div class="form-actions compact">
+                        <a class="btn btn-outline-light" asp-action="Index" asp-route-connectionId="@connection.ConnectionId">View snapshot</a>
+                        <form asp-action="Sync" method="post" class="inline-form">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="connectionId" value="@connection.ConnectionId" />
+                            <button type="submit" class="btn btn-primary">Sync now</button>
+                        </form>
+                    </div>
+                </article>
+            }
+        </div>
+    }
+</section>
+
+@if (snapshot is not null)
+{
+    <section class="content-section">
+        <div class="split-layout recommendation-summary-grid">
+            <article class="info-card">
+                <div class="card-kicker">Selected connection</div>
+                <h2>@snapshot.ConnectionDisplayName</h2>
+                <p class="section-copy">The recommendation list below is the most recent backend snapshot for this tenant connection. Syncing again revalidates the saved app credentials and refreshes the cached controls.</p>
+                <div class="summary-grid">
+                    <div class="summary-stat">
+                        <div class="meta-label">Status</div>
+                        <div class="status-badge @GetStatusClass(snapshot.SyncStatus)">@GetStatusLabel(snapshot.SyncStatus)</div>
+                    </div>
+                    <div class="summary-stat">
+                        <div class="meta-label">Controls</div>
+                        <div class="summary-value">@Model.TotalRecommendationCount</div>
+                    </div>
+                    <div class="summary-stat">
+                        <div class="meta-label">Filtered results</div>
+                        <div class="summary-value">@Model.FilteredRecommendationCount</div>
+                    </div>
+                    <div class="summary-stat">
+                        <div class="meta-label">Mapped controls</div>
+                        <div class="summary-value">@Model.MappedRecommendationCount</div>
+                    </div>
+                    <div class="summary-stat">
+                        <div class="meta-label">Runnable now</div>
+                        <div class="summary-value">@Model.RunnableRecommendationCount</div>
+                    </div>
+                    <div class="summary-stat">
+                        <div class="meta-label">License gap</div>
+                        <div class="summary-value">@Model.LicenseBlockedRecommendationCount</div>
+                    </div>
+                    <div class="summary-stat">
+                        <div class="meta-label">License unknown</div>
+                        <div class="summary-value">@Model.LicenseUnknownRecommendationCount</div>
+                    </div>
+                    <div class="summary-stat">
+                        <div class="meta-label">Broader family</div>
+                        <div class="summary-value">@Model.BlockedRecommendationCount</div>
+                    </div>
+                    <div class="summary-stat">
+                        <div class="meta-label">Unmapped</div>
+                        <div class="summary-value">@Model.UnmappedRecommendationCount</div>
+                    </div>
+                    <div class="summary-stat">
+                        <div class="meta-label">Cached drift</div>
+                        <div class="summary-value">@Model.MappingDriftCount</div>
+                    </div>
+                    <div class="summary-stat">
+                        <div class="meta-label">Last attempt</div>
+                        <div class="summary-value">@(snapshot.LastAttemptUtc.HasValue ? snapshot.LastAttemptUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm") : "No sync attempt yet")</div>
+                    </div>
+                    <div class="summary-stat">
+                        <div class="meta-label">Last success</div>
+                        <div class="summary-value">@(snapshot.LastSuccessUtc.HasValue ? snapshot.LastSuccessUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm") : "No successful sync yet")</div>
+                    </div>
+                </div>
+                <div class="form-actions compact">
+                    <form asp-action="Sync" method="post" class="inline-form">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="connectionId" value="@snapshot.ConnectionId" />
+                        <button type="submit" class="btn btn-primary">Sync now</button>
+                    </form>
+                    <form asp-action="BackfillMappings" method="post" class="inline-form">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="connectionId" value="@snapshot.ConnectionId" />
+                        <button type="submit" class="btn btn-outline-light">Refresh cached mappings</button>
+                    </form>
+                </div>
+            </article>
+
+            <article class="info-card">
+                <div class="card-kicker">Operator notes</div>
+                <h2>What this slice proves</h2>
+                <ul class="status-list">
+                    <li>Saved tenant credentials now stay on the server while Graph token acquisition happens in the backend.</li>
+                    <li>Secure Score control profiles are paged, normalized, and cached per connection instead of being pulled directly into the browser.</li>
+                    <li>Mapped playbooks and control sets now surface in the table so recommendation rows can route into real remediation workflows instead of ending in manual triage.</li>
+                    <li>The playbook cards below now expose current blockers and next-stage promotion targets so we can close this functionality stage with a visible gap list.</li>
+                    <li>@(Model.MappingDriftCount > 0 ? $"{Model.MappingDriftCount} cached row(s) still carry stale stored template keys from before the newer control-family mapping work. Use 'Refresh cached mappings' to persist the current routing without a full re-sync." : "Cached template keys already match the current routing logic.")</li>
+                </ul>
+                @if (!string.IsNullOrWhiteSpace(snapshot.LastError))
+                {
+                    <div class="validation-summary compact">
+                        @snapshot.LastError
+                    </div>
+                }
+                @if (Model.CoverageSummary is not null && Model.CoverageSummary.TopTemplateBuckets.Any())
+                {
+                    <div class="template-block">
+                        <div class="template-heading">Top mapped families in this snapshot</div>
+                        <ul class="info-list compact">
+                            @foreach (var bucket in Model.CoverageSummary.TopTemplateBuckets)
+                            {
+                                <li>@bucket.TemplateName: @bucket.ControlCount</li>
+                            }
+                        </ul>
+                    </div>
+                }
+                <div class="template-block">
+                    <div class="template-heading">Declared tenant capability profile</div>
+                    @if (Model.SelectedDeclaredLicenseCapabilityLabels.Any())
+                    {
+                        <div class="capability-list">
+                            @foreach (var capabilityLabel in Model.SelectedDeclaredLicenseCapabilityLabels)
+                            {
+                                <span class="status-badge idle">@capabilityLabel</span>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <p>No license capability profile is declared on this connection yet, so license-gated playbooks will show as unknown instead of blocked.</p>
+                    }
+                </div>
+            </article>
+        </div>
+    </section>
+
+    @if (Model.MappedPlaybooks.Any())
+    {
+        <section class="content-section">
+            <div class="section-heading">
+                <div>
+                    <span class="eyebrow">Mapped playbooks</span>
+                    <h2>Quick wins and control sets already routed from this snapshot</h2>
+                </div>
+            </div>
+
+            <div class="card-grid connection-grid">
+                @foreach (var playbook in Model.MappedPlaybooks)
+                {
+                    <article class="info-card recommendation-connection-card">
+                        <div class="card-kicker">@playbook.DeliveryMode</div>
+                        <h3>@playbook.TemplateName</h3>
+                        <p class="section-copy">@playbook.Summary</p>
+                        <div class="summary-grid">
+                            <div class="summary-stat">
+                                <div class="meta-label">Mapped controls</div>
+                                <div class="summary-value">@playbook.RecommendationCount</div>
+                            </div>
+                            <div class="summary-stat">
+                                <div class="meta-label">Launch posture</div>
+                                <div class="summary-value">@(playbook.SupportsQueueExecution ? "Runnable now" : "Manual or backlog")</div>
+                            </div>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(playbook.ExecutionSurface))
+                        {
+                            <div class="table-subtext">Execution surface: @playbook.ExecutionSurface</div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(playbook.TargetSurface))
+                        {
+                            <div class="table-subtext">Target surface: @playbook.TargetSurface</div>
+                        }
+                        @if (playbook.HasLicenseRequirements)
+                        {
+                            <div class="template-block">
+                                <div class="template-heading">License posture</div>
+                                <div class="table-subtext">
+                                    <span class="status-badge @GetLicenseStateClass(playbook.LicenseRequirementState)">@GetLicenseStateLabel(playbook.LicenseRequirementState)</span>
+                                </div>
+                                <div class="table-subtext">Requires: @string.Join(" | ", playbook.RequiredLicenseCapabilityLabels)</div>
+                                @if (playbook.HasMissingLicenseCapabilities)
+                                {
+                                    <div class="table-subtext">Missing on this tenant profile: @string.Join(" | ", playbook.MissingLicenseCapabilityLabels)</div>
+                                }
+                            </div>
+                        }
+                        @if (playbook.HasBlockers)
+                        {
+                            <div class="template-block">
+                                <div class="template-heading">Current blockers</div>
+                                <ul class="info-list compact">
+                                    @foreach (var blocker in playbook.CurrentBlockers)
+                                    {
+                                        <li>@blocker</li>
+                                    }
+                                </ul>
+                            </div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(playbook.NextStage))
+                        {
+                            <div class="template-block">
+                                <div class="template-heading">Next stage</div>
+                                <p>@playbook.NextStage</p>
+                            </div>
+                        }
+                        @if (playbook.ExampleRecommendationTitles.Any())
+                        {
+                            <div class="table-subtext">Examples: @string.Join(" | ", playbook.ExampleRecommendationTitles)</div>
+                        }
+                        <div class="form-actions compact">
+                            <a class="btn btn-outline-light"
+                               asp-action="Index"
+                               asp-route-connectionId="@snapshot.ConnectionId"
+                               asp-route-playbook="@playbook.TemplateKey">Filter controls</a>
+                            <a class="btn btn-primary"
+                               asp-controller="Remediations"
+                               asp-action="Index"
+                               asp-route-connectionId="@snapshot.ConnectionId"
+                               asp-route-templateKey="@playbook.TemplateKey">Open playbook</a>
+                        </div>
+                    </article>
+                }
+            </div>
+        </section>
+    }
+
+    <section class="content-section">
+        <div class="section-heading">
+            <div>
+                <span class="eyebrow">Latest snapshot</span>
+                <h2>Secure Score recommendations</h2>
+            </div>
+        </div>
+
+        @if (!snapshot.Recommendations.Any())
+        {
+            <article class="info-card empty-state">
+                <div class="card-kicker">No snapshot data yet</div>
+                <h3>Run the first sync for this connection</h3>
+                <p>Once the backend can get a Graph token and pull control profiles, the latest snapshot will appear here for review and quick win mapping.</p>
+            </article>
+        }
+        else
+        {
+            <article class="info-card">
+                <div class="card-kicker">Operator filters</div>
+                <h3>Focus the recommendation set</h3>
+                <form method="get" asp-action="Index" class="stack-form">
+                    <input type="hidden" name="connectionId" value="@snapshot.ConnectionId" />
+                    <div class="form-grid">
+                        <div class="form-field">
+                            <label for="searchTerm">Search</label>
+                            <input id="searchTerm" name="searchTerm" class="form-control" value="@Model.SearchTerm" placeholder="Title, category, product, or control ID" />
+                        </div>
+                        <div class="form-field">
+                            <label for="category">Category</label>
+                            <select id="category" name="category" class="form-control">
+                                <option value="">All categories</option>
+                                @foreach (var categoryOption in Model.AvailableCategories)
+                                {
+                                    <option value="@categoryOption" selected="@(string.Equals(Model.CategoryFilter, categoryOption, StringComparison.OrdinalIgnoreCase))">@categoryOption</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="form-field">
+                            <label for="product">Product</label>
+                            <select id="product" name="product" class="form-control">
+                                <option value="">All products</option>
+                                @foreach (var productOption in Model.AvailableProducts)
+                                {
+                                    <option value="@productOption" selected="@(string.Equals(Model.ProductFilter, productOption, StringComparison.OrdinalIgnoreCase))">@productOption</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="form-field">
+                            <label for="playbook">Playbook</label>
+                            <select id="playbook" name="playbook" class="form-control">
+                                <option value="">All playbooks</option>
+                                @foreach (var playbookOption in Model.MappedPlaybooks)
+                                {
+                                    <option value="@playbookOption.TemplateKey"
+                                            selected="@(string.Equals(Model.PlaybookFilter, playbookOption.TemplateKey, StringComparison.OrdinalIgnoreCase))">
+                                        @playbookOption.TemplateName
+                                    </option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-check">
+                        <input id="quickWinsOnly" name="quickWinsOnly" value="true" class="form-check-input" type="checkbox" checked="@Model.QuickWinsOnly" />
+                        <label for="quickWinsOnly" class="form-check-label">Only show recommendations that already map to a Securityzator playbook.</label>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">Apply filters</button>
+                        @if (Model.HasActiveFilters)
+                        {
+                            <a class="btn btn-outline-light" asp-action="Index" asp-route-connectionId="@snapshot.ConnectionId">Clear filters</a>
+                        }
+                        <a class="btn btn-outline-light" asp-controller="Remediations" asp-action="Index" asp-route-connectionId="@snapshot.ConnectionId">Open remediations</a>
+                    </div>
+                </form>
+            </article>
+
+            @if (!Model.FilteredRecommendations.Any())
+            {
+                <article class="info-card empty-state">
+                    <div class="card-kicker">No matches</div>
+                    <h3>No recommendations match the current filters</h3>
+                    <p>Broaden the search or clear one of the filters to bring the full snapshot back into view.</p>
+                    <div class="form-actions compact">
+                        <a class="btn btn-outline-light" asp-action="Index" asp-route-connectionId="@snapshot.ConnectionId">Clear filters</a>
+                    </div>
+                </article>
+            }
+            else
+            {
+            <div class="table-card">
+                <table class="table table-dark align-middle mb-0 recommendation-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Rank</th>
+                            <th scope="col">Recommendation</th>
+                            <th scope="col">Category</th>
+                            <th scope="col">Product</th>
+                            <th scope="col">Score</th>
+                            <th scope="col">Playbook</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var recommendation in Model.FilteredRecommendations)
+                        {
+                            var row = recommendation;
+                            var record = row.Recommendation;
+                            <tr>
+                                <td>#@record.Rank</td>
+                                <td class="recommendation-copy">
+                                    <div class="fw-semibold">@record.Title</div>
+                                    <div class="table-subtext">Control ID: @record.ControlId | Action type: @(string.IsNullOrWhiteSpace(record.ActionType) ? "Review" : record.ActionType) | User impact: @(string.IsNullOrWhiteSpace(record.UserImpact) ? "Unspecified" : record.UserImpact)</div>
+                                    @if (!string.IsNullOrWhiteSpace(record.Remediation))
+                                    {
+                                        <div class="table-subtext pre-wrap">@record.Remediation</div>
+                                    }
+                                    @if (record.Threats.Any())
+                                    {
+                                        <div class="table-subtext">Threats: @string.Join(", ", record.Threats)</div>
+                                    }
+                                </td>
+                                <td>@(string.IsNullOrWhiteSpace(record.Category) ? "Unspecified" : record.Category)</td>
+                                <td>@(string.IsNullOrWhiteSpace(record.Product) ? "Unspecified" : record.Product)</td>
+                                <td>@record.MaxScore.ToString("0.##")</td>
+                                <td>
+                                    @if (!row.HasMappedTemplate)
+                                    {
+                                        <span>Needs triage</span>
+                                    }
+                                    else
+                                    {
+                                        <div class="fw-semibold">@(row.TemplateName ?? row.TemplateKey)</div>
+                                        @if (!string.IsNullOrWhiteSpace(row.TemplateDeliveryMode))
+                                        {
+                                            <div class="table-subtext">@row.TemplateDeliveryMode</div>
+                                        }
+                                        @if (!string.IsNullOrWhiteSpace(row.TemplateTargetSurface))
+                                        {
+                                            <div class="table-subtext">Target surface: @row.TemplateTargetSurface</div>
+                                        }
+                                        @if (row.HasLicenseRequirements)
+                                        {
+                                            <div class="table-subtext">
+                                                <span class="status-badge @GetLicenseStateClass(row.LicenseRequirementState)">@GetLicenseStateLabel(row.LicenseRequirementState)</span>
+                                            </div>
+                                            <div class="table-subtext">Requires: @string.Join(" | ", row.RequiredLicenseCapabilityLabels)</div>
+                                            @if (row.HasMissingLicenseCapabilities)
+                                            {
+                                                <div class="table-subtext">Missing on this tenant profile: @string.Join(" | ", row.MissingLicenseCapabilityLabels)</div>
+                                            }
+                                        }
+                                        @if (row.HasTemplateBlockers)
+                                        {
+                                            <div class="table-subtext">Blocked in this stage: @row.TemplateBlockers.Count blocker@(row.TemplateBlockers.Count == 1 ? string.Empty : "s")</div>
+                                        }
+                                        <div class="form-actions compact">
+                                            <a class="btn btn-outline-light btn-sm"
+                                               asp-controller="Remediations"
+                                               asp-action="Index"
+                                               asp-route-connectionId="@snapshot.ConnectionId"
+                                               asp-route-templateKey="@row.TemplateKey"
+                                               asp-route-sourceControlId="@record.ControlId">@(row.SupportsQueueExecution ? "Open queue" : "Open playbook")</a>
+                                        </div>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            }
+        }
+    </section>
+}

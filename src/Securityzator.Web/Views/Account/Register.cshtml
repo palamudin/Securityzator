@@ -1,0 +1,59 @@
+@model Securityzator.Web.Models.Account.RegisterViewModel
+@{
+    ViewData["Title"] = "Create Workspace";
+}
+
+<section class="auth-shell">
+    <article class="auth-card">
+        <span class="eyebrow">Initial setup</span>
+        <h1>Create the first operator workspace</h1>
+        <p class="section-copy">This bootstrap account owns the first Securityzator workspace and unlocks the Azure connection flow for recommendation sync and remediation work.</p>
+
+        <div asp-validation-summary="ModelOnly" class="validation-summary"></div>
+
+        <form asp-action="Register" method="post" class="stack-form">
+            @Html.AntiForgeryToken()
+
+            <div class="form-grid">
+                <div class="form-field">
+                    <label asp-for="DisplayName"></label>
+                    <input asp-for="DisplayName" class="form-control" autocomplete="name" />
+                    <span asp-validation-for="DisplayName" class="field-validation-error"></span>
+                </div>
+
+                <div class="form-field">
+                    <label asp-for="WorkspaceName"></label>
+                    <input asp-for="WorkspaceName" class="form-control" />
+                    <span asp-validation-for="WorkspaceName" class="field-validation-error"></span>
+                </div>
+
+                <div class="form-field">
+                    <label asp-for="Email"></label>
+                    <input asp-for="Email" class="form-control" autocomplete="username" />
+                    <span asp-validation-for="Email" class="field-validation-error"></span>
+                </div>
+
+                <div class="form-field">
+                    <label asp-for="Password"></label>
+                    <input asp-for="Password" class="form-control" autocomplete="new-password" />
+                    <span asp-validation-for="Password" class="field-validation-error"></span>
+                </div>
+
+                <div class="form-field">
+                    <label asp-for="ConfirmPassword"></label>
+                    <input asp-for="ConfirmPassword" class="form-control" autocomplete="new-password" />
+                    <span asp-validation-for="ConfirmPassword" class="field-validation-error"></span>
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Create workspace</button>
+                <a class="btn btn-outline-light" asp-action="Login">Back to sign in</a>
+            </div>
+        </form>
+    </article>
+</section>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

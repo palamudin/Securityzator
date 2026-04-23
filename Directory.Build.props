@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup>
+    <!-- Work around local SDK/IPC instability during solution builds. -->
+    <BuildInParallel>false</BuildInParallel>
+    <UseSharedCompilation>false</UseSharedCompilation>
+  </PropertyGroup>
+</Project>

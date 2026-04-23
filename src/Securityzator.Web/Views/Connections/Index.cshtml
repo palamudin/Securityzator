@@ -1,0 +1,489 @@
+@model Securityzator.Web.Models.Connections.ConnectionsPageViewModel
+@{
+    ViewData["Title"] = "Azure Connections";
+}
+
+@functions {
+    private static string GetValidationLabel(Securityzator.Application.Connections.AzureConnectionValidationStatus status)
+    {
+        return status switch
+        {
+            Securityzator.Application.Connections.AzureConnectionValidationStatus.Succeeded => "Validated",
+            Securityzator.Application.Connections.AzureConnectionValidationStatus.Failed => "Needs attention",
+            _ => "Not checked"
+        };
+    }
+
+    private static string GetValidationClass(Securityzator.Application.Connections.AzureConnectionValidationStatus status)
+    {
+        return status switch
+        {
+            Securityzator.Application.Connections.AzureConnectionValidationStatus.Succeeded => "success",
+            Securityzator.Application.Connections.AzureConnectionValidationStatus.Failed => "failed",
+            _ => "idle"
+        };
+    }
+
+    private static string GetSecretPostureLabel(DateTimeOffset secretUpdatedUtc)
+    {
+        var age = Math.Max(0, (DateTimeOffset.UtcNow - secretUpdatedUtc).TotalDays);
+        return age switch
+        {
+            >= 75 => "Rotate now",
+            >= 45 => "Rotate soon",
+            _ => "Fresh"
+        };
+    }
+
+    private static string GetSecretPostureClass(DateTimeOffset secretUpdatedUtc)
+    {
+        var age = Math.Max(0, (DateTimeOffset.UtcNow - secretUpdatedUtc).TotalDays);
+        return age switch
+        {
+            >= 75 => "failed",
+            >= 45 => "retry",
+            _ => "success"
+        };
+    }
+
+    private static int GetSecretAgeDays(DateTimeOffset secretUpdatedUtc)
+    {
+        return Math.Max(0, (int)Math.Floor((DateTimeOffset.UtcNow - secretUpdatedUtc).TotalDays));
+    }
+
+    private static string GetCapabilityLabel(bool enabled)
+    {
+        return enabled ? "Ready" : "Blocked";
+    }
+
+    private static string GetCapabilityClass(bool enabled)
+    {
+        return enabled ? "success" : "failed";
+    }
+
+    private static string GetTeamsAutomationLabel(bool enabled)
+    {
+        return enabled ? "Ready" : "Blocked";
+    }
+
+    private static string GetTeamsAutomationClass(bool enabled)
+    {
+        return enabled ? "success" : "failed";
+    }
+
+    private static string GetIntuneAutomationLabel(bool enabled)
+    {
+        return enabled ? "Ready" : "Blocked";
+    }
+
+    private static string GetIntuneAutomationClass(bool enabled)
+    {
+        return enabled ? "success" : "failed";
+    }
+
+    private static string GetAutomationCertificateLabel(Securityzator.Application.Connections.AutomationCertificateStatus status)
+    {
+        return status switch
+        {
+            Securityzator.Application.Connections.AutomationCertificateStatus.Ready => "Ready",
+            Securityzator.Application.Connections.AutomationCertificateStatus.NotFound => "Not found",
+            Securityzator.Application.Connections.AutomationCertificateStatus.MissingPrivateKey => "No private key",
+            Securityzator.Application.Connections.AutomationCertificateStatus.Expired => "Expired",
+            Securityzator.Application.Connections.AutomationCertificateStatus.Error => "Error",
+            _ => "Not configured"
+        };
+    }
+
+    private static string GetAutomationCertificateClass(Securityzator.Application.Connections.AutomationCertificateStatus status)
+    {
+        return status switch
+        {
+            Securityzator.Application.Connections.AutomationCertificateStatus.Ready => "success",
+            Securityzator.Application.Connections.AutomationCertificateStatus.NotConfigured => "idle",
+            _ => "failed"
+        };
+    }
+}
+
+<section class="content-section">
+    <div class="section-heading">
+        <div>
+            <span class="eyebrow">Milestone 6 hardening slice</span>
+            <h1>Azure connection management</h1>
+            <p class="section-copy">Saved tenant profiles now carry Graph validation, secret-rotation posture, Entra daily-use write readiness, Teams admin automation readiness, and optional Windows automation certificate readiness so operators can see whether the backend is ready for both current Graph flows and the next Microsoft 365 admin providers.</p>
+        </div>
+        <div class="shell-pill">@Model.WorkspaceName</div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+    {
+        <div class="alert-shell success">@Model.StatusMessage</div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+    {
+        <div class="alert-shell error">@Model.ErrorMessage</div>
+    }
+
+    <div class="split-layout form-layout">
+        <article class="info-card">
+            <div class="card-kicker">Operator @Model.OperatorDisplayName</div>
+            <h2>@(Model.IsEditMode ? "Edit connection profile" : "Create a connection profile")</h2>
+            <p class="muted-note">Use a dedicated Azure app registration for this tenant. Saved secrets stay server-side and are only replaceable, never re-displayed. Add an automation certificate when you want to prepare this tenant for Exchange, SharePoint, Purview, or future PowerShell-backed providers. Teams meeting automation also needs Microsoft Graph <code>Organization.Read.All</code> plus a Microsoft Entra admin role assignment such as Teams Administrator. The declared license profile below is the current operator view of what this tenant is entitled to, so recommendation and playbook screens can separate true blockers from simply unsupported SKUs.</p>
+
+            <form asp-action="Save" method="post" class="stack-form">
+                @Html.AntiForgeryToken()
+                <input asp-for="Id" type="hidden" />
+
+                <div asp-validation-summary="ModelOnly" class="validation-summary"></div>
+
+                <div class="form-grid">
+                    <div class="form-field">
+                        <label asp-for="DisplayName"></label>
+                        <input asp-for="DisplayName" class="form-control" />
+                        <span asp-validation-for="DisplayName" class="field-validation-error"></span>
+                    </div>
+
+                    <div class="form-field">
+                        <label asp-for="RedirectUri"></label>
+                        <input asp-for="RedirectUri" class="form-control" />
+                        <span asp-validation-for="RedirectUri" class="field-validation-error"></span>
+                    </div>
+
+                    <div class="form-field">
+                        <label asp-for="TenantId"></label>
+                        <input asp-for="TenantId" class="form-control" />
+                        <span asp-validation-for="TenantId" class="field-validation-error"></span>
+                    </div>
+
+                    <div class="form-field">
+                        <label asp-for="ClientId"></label>
+                        <input asp-for="ClientId" class="form-control" />
+                        <span asp-validation-for="ClientId" class="field-validation-error"></span>
+                    </div>
+                </div>
+
+                <div class="form-field">
+                    <label asp-for="ClientSecret"></label>
+                    <input asp-for="ClientSecret" class="form-control" />
+                    <span asp-validation-for="ClientSecret" class="field-validation-error"></span>
+                    <div class="muted-note">@(Model.IsEditMode ? "Leave blank to keep the current saved secret." : "Required on first save. The secret is protected immediately and never shown again.")</div>
+                </div>
+
+                <div class="template-block">
+                    <div class="template-heading">Optional automation certificate</div>
+                    <p class="muted-note">For IIS and Windows service hosting, install the certificate on the server first, then save the thumbprint and store details here so Securityzator can validate readiness for non-Graph providers.</p>
+                </div>
+
+                <div class="form-grid">
+                    <div class="form-field">
+                        <label asp-for="AutomationCertificateThumbprint"></label>
+                        <input asp-for="AutomationCertificateThumbprint" class="form-control" />
+                        <span asp-validation-for="AutomationCertificateThumbprint" class="field-validation-error"></span>
+                    </div>
+
+                    <div class="form-field">
+                        <label asp-for="AutomationCertificateStoreLocation"></label>
+                        <select asp-for="AutomationCertificateStoreLocation" class="form-control">
+                            <option value="LocalMachine">LocalMachine</option>
+                            <option value="CurrentUser">CurrentUser</option>
+                        </select>
+                    </div>
+
+                    <div class="form-field">
+                        <label asp-for="AutomationCertificateStoreName"></label>
+                        <select asp-for="AutomationCertificateStoreName" class="form-control">
+                            <option value="My">My</option>
+                            <option value="WebHosting">WebHosting</option>
+                            <option value="Root">Root</option>
+                            <option value="TrustedPeople">TrustedPeople</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="template-block">
+                    <div class="template-heading">Declared tenant license and capability profile</div>
+                    <p class="muted-note">Check the capabilities you know are active for this tenant today. This is a temporary operator-declared profile until Securityzator learns to discover SKU and workload entitlement automatically.</p>
+                </div>
+
+                <div class="field-list">
+                    @foreach (var capability in Model.AvailableLicenseCapabilities)
+                    {
+                        var isSelected = Model.SelectedLicenseCapabilities.Any(selected =>
+                            string.Equals(selected, capability.Key, StringComparison.OrdinalIgnoreCase));
+                        <label class="field-row" for="cap_@capability.Key">
+                            <div>
+                                <div class="field-label">@capability.Label</div>
+                                <div class="field-help">@capability.Description</div>
+                            </div>
+                            <div class="field-meta">
+                                <input id="cap_@capability.Key"
+                                       name="SelectedLicenseCapabilities"
+                                       type="checkbox"
+                                       value="@capability.Key"
+                                       checked="@isSelected" />
+                            </div>
+                        </label>
+                    }
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">@((Model.IsEditMode ? "Save changes" : "Create connection"))</button>
+                    @if (Model.IsEditMode)
+                    {
+                        <a class="btn btn-outline-light" asp-action="Index">Cancel edit</a>
+                    }
+                </div>
+            </form>
+        </article>
+
+        <article class="info-card">
+            <div class="card-kicker">Connection record</div>
+            <h2>Required fields</h2>
+            <div class="field-list">
+                @foreach (var field in Model.Blueprint!.ConnectionFields)
+                {
+                    <div class="field-row">
+                        <div>
+                            <div class="field-label">@field.Label</div>
+                            <div class="field-help">@field.HelpText</div>
+                        </div>
+                        <div class="field-meta">
+                            <span>@field.Placeholder</span>
+                            <span>@(field.IsSecret ? "Protected" : "Visible")</span>
+                        </div>
+                    </div>
+                }
+            </div>
+        </article>
+    </div>
+</section>
+
+<section class="content-section">
+    <div class="section-heading">
+        <div>
+            <span class="eyebrow">Saved profiles</span>
+            <h2>Connection records for this workspace</h2>
+        </div>
+    </div>
+
+    @if (!Model.Connections.Any())
+    {
+        <article class="info-card empty-state">
+            <div class="card-kicker">No records yet</div>
+            <h3>Create the first Azure tenant connection</h3>
+            <p>The next milestone will pull Secure Score recommendations through one of these connection profiles, so this is the first real product data set.</p>
+        </article>
+    }
+    else
+    {
+        <div class="card-grid connection-grid">
+            @foreach (var connection in Model.Connections)
+            {
+                <article class="info-card connection-card">
+                    <div class="card-kicker">Updated @connection.UpdatedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</div>
+                    <h3>@connection.DisplayName</h3>
+                    <div class="connection-meta">
+                        <div class="meta-row">
+                            <div>
+                                <div class="meta-label">Tenant ID</div>
+                                <div class="meta-value">@connection.TenantId</div>
+                            </div>
+                        </div>
+                        <div class="meta-row">
+                            <div>
+                                <div class="meta-label">Application ID</div>
+                                <div class="meta-value">@connection.ClientId</div>
+                            </div>
+                        </div>
+                        <div class="meta-row">
+                            <div>
+                                <div class="meta-label">Redirect URI</div>
+                                <div class="meta-value">@connection.RedirectUri</div>
+                            </div>
+                        </div>
+                        <div class="meta-row">
+                            <div>
+                                <div class="meta-label">Validation status</div>
+                                <div class="meta-value">
+                                    <span class="status-badge @GetValidationClass(connection.ValidationStatus)">@GetValidationLabel(connection.ValidationStatus)</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="meta-row">
+                            <div>
+                                <div class="meta-label">Secret posture</div>
+                                <div class="meta-value">
+                                    @if (connection.HasStoredSecret)
+                                    {
+                                        <span class="status-badge @GetSecretPostureClass(connection.SecretUpdatedUtc)">@GetSecretPostureLabel(connection.SecretUpdatedUtc)</span>
+                                        <div class="table-subtext">Secret last replaced @GetSecretAgeDays(connection.SecretUpdatedUtc) day(s) ago.</div>
+                                    }
+                                    else
+                                    {
+                                        <span class="status-badge failed">Missing</span>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                        <div class="meta-row">
+                            <div>
+                                <div class="meta-label">Last validation attempt</div>
+                                <div class="meta-value">@(connection.LastValidationAttemptUtc.HasValue ? connection.LastValidationAttemptUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm") : "Not validated yet")</div>
+                            </div>
+                        </div>
+                        <div class="meta-row">
+                            <div>
+                                <div class="meta-label">Last validation success</div>
+                                <div class="meta-value">@(connection.LastValidationSuccessUtc.HasValue ? connection.LastValidationSuccessUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm") : "No successful validation yet")</div>
+                            </div>
+                        </div>
+                        <div class="meta-row">
+                            <div>
+                                <div class="meta-label">Required Graph surfaces</div>
+                                <div class="meta-value capability-list">
+                                    <span class="status-badge @GetCapabilityClass(connection.CanReadGroups)">Groups: @GetCapabilityLabel(connection.CanReadGroups)</span>
+                                    <span class="status-badge @GetCapabilityClass(connection.CanReadConditionalAccess)">Conditional Access: @GetCapabilityLabel(connection.CanReadConditionalAccess)</span>
+                                    <span class="status-badge @GetCapabilityClass(connection.CanReadRecommendations)">Secure Score: @GetCapabilityLabel(connection.CanReadRecommendations)</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="meta-row">
+                            <div>
+                                <div class="meta-label">Intune readiness</div>
+                                <div class="meta-value">
+                                    <div class="capability-list">
+                                        <span class="status-badge @GetIntuneAutomationClass(connection.CanReadManagedDevices)">Managed devices: @GetIntuneAutomationLabel(connection.CanReadManagedDevices)</span>
+                                        <span class="status-badge @GetIntuneAutomationClass(connection.CanReadIntuneDeviceConfigurations)">Device configs: @GetIntuneAutomationLabel(connection.CanReadIntuneDeviceConfigurations)</span>
+                                        <span class="status-badge @GetIntuneAutomationClass(connection.CanReadIntuneCompliancePolicies)">Compliance policies: @GetIntuneAutomationLabel(connection.CanReadIntuneCompliancePolicies)</span>
+                                    </div>
+                                    <div class="table-subtext">Enrolled devices: @connection.IntuneEnrolledDeviceCount</div>
+                                    <div class="table-subtext">Device configurations: @(connection.HasIntuneDeviceConfigurations ? "present" : "none yet")</div>
+                                    <div class="table-subtext">Compliance policies: @(connection.HasIntuneCompliancePolicies ? "present" : "none yet")</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="meta-row">
+                            <div>
+                                <div class="meta-label">Entra daily-use automation</div>
+                                <div class="meta-value">
+                                    <span class="status-badge @GetCapabilityClass(connection.CanManageEntraDailyUseHardening)">Daily-use hardening: @GetCapabilityLabel(connection.CanManageEntraDailyUseHardening)</span>
+                                    <div class="table-subtext">Checks whether this app can update authorization policy, admin consent workflow, and default domain password-expiration settings.</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="meta-row">
+                            <div>
+                                <div class="meta-label">Declared license profile</div>
+                                <div class="meta-value capability-list">
+                                    @if (connection.DeclaredLicenseCapabilityLabels.Any())
+                                    {
+                                        @foreach (var capabilityLabel in connection.DeclaredLicenseCapabilityLabels)
+                                        {
+                                            <span class="status-badge idle">@capabilityLabel</span>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <div class="table-subtext">No capability profile declared yet. Recommendation screens will treat license-gated controls as unknown until this is filled in.</div>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                        <div class="meta-row">
+                            <div>
+                                <div class="meta-label">Teams meeting policy automation</div>
+                                <div class="meta-value">
+                                    <span class="status-badge @GetTeamsAutomationClass(connection.CanManageTeamsMeetingPolicy)">@GetTeamsAutomationLabel(connection.CanManageTeamsMeetingPolicy)</span>
+                                    <div class="table-subtext">Read-only probe against the tenant's Global Teams meeting policy.</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="meta-row">
+                            <div>
+                                <div class="meta-label">Windows automation certificate</div>
+                                <div class="meta-value">
+                                    <span class="status-badge @GetAutomationCertificateClass(connection.AutomationCertificateStatus)">@GetAutomationCertificateLabel(connection.AutomationCertificateStatus)</span>
+                                    @if (string.IsNullOrWhiteSpace(connection.AutomationCertificateThumbprint))
+                                    {
+                                        <div class="table-subtext">Optional today. Add this when you want to prepare Exchange, SharePoint, Purview, or other Windows-admin providers.</div>
+                                    }
+                                    else
+                                    {
+                                        <div class="table-subtext">Thumbprint: @connection.AutomationCertificateThumbprint</div>
+                                        <div class="table-subtext">Store: @connection.AutomationCertificateStoreLocation\@connection.AutomationCertificateStoreName</div>
+                                        @if (!string.IsNullOrWhiteSpace(connection.AutomationCertificateSubject))
+                                        {
+                                            <div class="table-subtext">Subject: @connection.AutomationCertificateSubject</div>
+                                        }
+                                        @if (connection.AutomationCertificateExpiresUtc.HasValue)
+                                        {
+                                            <div class="table-subtext">Expires: @connection.AutomationCertificateExpiresUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</div>
+                                        }
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(connection.TeamsAutomationMessage))
+                        {
+                            <div class="meta-row">
+                                <div>
+                                    <div class="meta-label">Teams automation note</div>
+                                    <div class="meta-value pre-wrap">@connection.TeamsAutomationMessage</div>
+                                </div>
+                            </div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(connection.IntuneAutomationMessage))
+                        {
+                            <div class="meta-row">
+                                <div>
+                                    <div class="meta-label">Intune automation note</div>
+                                    <div class="meta-value pre-wrap">@connection.IntuneAutomationMessage</div>
+                                </div>
+                            </div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(connection.EntraDailyUseAutomationMessage))
+                        {
+                            <div class="meta-row">
+                                <div>
+                                    <div class="meta-label">Entra daily-use note</div>
+                                    <div class="meta-value pre-wrap">@connection.EntraDailyUseAutomationMessage</div>
+                                </div>
+                            </div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(connection.LastValidationError))
+                        {
+                            <div class="meta-row">
+                                <div>
+                                    <div class="meta-label">Last validation error</div>
+                                    <div class="meta-value pre-wrap">@connection.LastValidationError</div>
+                                </div>
+                            </div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(connection.AutomationCertificateMessage))
+                        {
+                            <div class="meta-row">
+                                <div>
+                                    <div class="meta-label">Automation readiness note</div>
+                                    <div class="meta-value pre-wrap">@connection.AutomationCertificateMessage</div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                    <div class="form-actions compact">
+                        <form asp-action="Validate" method="post" class="inline-form">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="connectionId" value="@connection.Id" />
+                            <button type="submit" class="btn btn-primary">Validate now</button>
+                        </form>
+                        <a class="btn btn-outline-light" asp-action="Edit" asp-route-id="@connection.Id">Edit profile</a>
+                    </div>
+                </article>
+            }
+        </div>
+    }
+</section>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

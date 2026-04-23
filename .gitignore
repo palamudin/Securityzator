@@ -1,0 +1,38 @@
+Auth.txt
+.bootstrap-auth.json
+
+# Local app state and protected secrets
+App_Data/
+src/**/App_Data/
+**/keyring/
+.dotnet/
+
+# Build and publish output
+artifacts/
+**/bin/
+**/obj/
+publish/
+
+# Logs and local diagnostics
+*.log
+*.trace.json
+*.pid
+recommendations-page.html
+remediations-page.html
+dashboard-page.html
+jobs-page.html
+*-page.html
+*-response.html
+*-select.html
+execute-response.html
+smoke-start-marker.txt
+
+# Generated reports and exports
+artifacts/reports/*.csv
+
+# IDE and user-local files
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates

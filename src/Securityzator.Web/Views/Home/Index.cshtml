@@ -1,0 +1,130 @@
+@model Securityzator.Web.Models.Home.DashboardViewModel
+@{
+    ViewData["Title"] = "Dashboard";
+}
+
+<section class="hero-panel">
+    <div class="hero-copy">
+        <span class="eyebrow">Milestone 6</span>
+        <h1>@Model.WorkspaceName is moving into role-aware hardening.</h1>
+        <p class="hero-text">Signed in as <strong>@Model.OperatorDisplayName</strong>. The product shell now owns operator auth, Azure connection records, backend Graph sync, remediation playbooks, worker-backed queueing, and live coverage reporting for how much of each tenant snapshot is runnable now versus routed into broader control families.</p>
+        <p class="hero-text muted-copy">@Model.Blueprint.PlatformSummary</p>
+        <div class="hero-actions">
+            <a class="btn btn-primary btn-lg" asp-controller="Remediations" asp-action="Index">Queue quick win</a>
+            <a class="btn btn-outline-light btn-lg" asp-controller="Jobs" asp-action="Index">Track jobs</a>
+        </div>
+    </div>
+    <div class="status-card">
+        <div class="status-label">Workspace posture</div>
+        <div class="status-value">@Model.ConnectionCount saved connection@(Model.ConnectionCount == 1 ? "" : "s")</div>
+        <ul class="status-list">
+            <li>@(Model.HasConnections ? $"{Model.ValidatedConnectionCount} connection(s) have passed backend validation and {Model.RecommendationReadyConnectionCount} have live recommendation snapshots." : "No tenant connections are saved yet. Create the first record to unlock recommendation sync work.")</li>
+            <li>High-impact remediation pages now require the workspace admin role.</li>
+            <li>Queued remediation launches must carry an explicit approval justification and review confirmation.</li>
+            <li>@(Model.SecretsNeedingRotationCount > 0 ? $"{Model.SecretsNeedingRotationCount} connection secret(s) are aging toward rotation." : "No saved connection secrets are currently in the rotation warning window.")</li>
+            <li>@(Model.HasCoverage ? $"{Model.TotalMappedRecommendationCount} cached Secure Score control(s) are currently routed, with {Model.TotalRunnableRecommendationCount} already in runnable playbooks." : "Recommendation coverage will appear here after the first successful snapshot.")</li>
+        </ul>
+    </div>
+</section>
+
+<section class="content-section">
+    <div class="section-heading">
+        <div>
+            <span class="eyebrow">Operational posture</span>
+            <h2>What needs attention right now</h2>
+        </div>
+    </div>
+    <div class="card-grid">
+        <article class="status-card">
+            <div class="status-label">Validated tenants</div>
+            <div class="status-value">@Model.ValidatedConnectionCount</div>
+            <div class="footer-copy">@Model.ConnectionValidationFailureCount connection@(Model.ConnectionValidationFailureCount == 1 ? "" : "s") need validation follow-up.</div>
+        </article>
+        <article class="status-card">
+            <div class="status-label">Recommendation-ready</div>
+            <div class="status-value">@Model.RecommendationReadyConnectionCount</div>
+            <div class="footer-copy">Saved tenant profile@(Model.RecommendationReadyConnectionCount == 1 ? "" : "s") with a successful Secure Score snapshot.</div>
+        </article>
+        <article class="status-card">
+            <div class="status-label">Secrets nearing rotation</div>
+            <div class="status-value">@Model.SecretsNeedingRotationCount</div>
+            <div class="footer-copy">@Model.SecretsPastRotationCount connection@(Model.SecretsPastRotationCount == 1 ? "" : "s") are already in the rotate-now range.</div>
+        </article>
+        <article class="status-card">
+            <div class="status-label">Active remediation jobs</div>
+            <div class="status-value">@Model.ActiveJobCount</div>
+            <div class="footer-copy">@Model.JobsNeedingAttentionCount job@(Model.JobsNeedingAttentionCount == 1 ? "" : "s") are failed or waiting for retry.</div>
+        </article>
+        <article class="status-card">
+            <div class="status-label">Mapped controls</div>
+            <div class="status-value">@Model.TotalMappedRecommendationCount</div>
+            <div class="footer-copy">Across @Model.CoverageReadyConnectionCount cached tenant snapshot@(Model.CoverageReadyConnectionCount == 1 ? "" : "s").</div>
+        </article>
+        <article class="status-card">
+            <div class="status-label">Runnable controls</div>
+            <div class="status-value">@Model.TotalRunnableRecommendationCount</div>
+            <div class="footer-copy">@Model.TotalMappingDriftCount cached mapping drift item@(Model.TotalMappingDriftCount == 1 ? "" : "s") still need persistence refresh.</div>
+        </article>
+    </div>
+</section>
+
+@if (Model.HasAttentionItems)
+{
+    <section class="content-section">
+        <div class="section-heading">
+            <div>
+                <span class="eyebrow">Needs attention</span>
+                <h2>Operator follow-up list</h2>
+            </div>
+        </div>
+        <article class="info-card">
+            <ul class="status-list">
+                @foreach (var item in Model.AttentionItems)
+                {
+                    <li>@item</li>
+                }
+            </ul>
+        </article>
+    </section>
+}
+
+<section class="content-section">
+    <div class="section-heading">
+        <div>
+            <span class="eyebrow">Platform modules</span>
+            <h2>What the new product shell is organizing around</h2>
+        </div>
+    </div>
+    <div class="card-grid">
+        @foreach (var module in Model.Blueprint.Modules)
+        {
+            <article class="info-card">
+                <div class="card-kicker">@module.Status</div>
+                <h3>@module.Name</h3>
+                <p>@module.Summary</p>
+            </article>
+        }
+    </div>
+</section>
+
+<section class="content-section">
+    <div class="section-heading">
+        <div>
+            <span class="eyebrow">Milestones</span>
+            <h2>Port path from prototype to enterprise service</h2>
+        </div>
+    </div>
+    <div class="timeline">
+        @foreach (var milestone in Model.Blueprint.Milestones)
+        {
+            <article class="timeline-item">
+                <div class="timeline-status">@milestone.Status</div>
+                <div class="timeline-body">
+                    <h3>@milestone.Key - @milestone.Name</h3>
+                    <p>@milestone.Goal</p>
+                    <div class="timeline-exit">Exit criteria: @milestone.ExitCriteria</div>
+                </div>
+            </article>
+        }
+    </div>
+</section>
