@@ -1,0 +1,2169 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>SecureGrid — M365 Hardening Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+/* ═══════════════════════════════════════════════
+   DESIGN TOKENS
+═══════════════════════════════════════════════ */
+:root {
+  --bg:           #0a0c10;
+  --bg2:          #0f1218;
+  --bg3:          #161b24;
+  --surface:      #1a2030;
+  --surface2:     #212840;
+  --border:       #2a3348;
+  --border2:      #3a4560;
+  --text:         #e2e8f0;
+  --text2:        #8899bb;
+  --text3:        #4a5878;
+  --accent:       #00d4ff;
+  --accent2:      #0088cc;
+  --green:        #00e5a0;
+  --amber:        #ffb340;
+  --red:          #ff4a6b;
+  --purple:       #9b6dff;
+  --sidebar-w:    260px;
+  --sidebar-collapsed: 0px;
+  --hdr:          52px;
+  --radius:       8px;
+  --font-ui:      'Syne', sans-serif;
+  --font-mono:    'Space Mono', monospace;
+  --trans:        all 0.28s cubic-bezier(0.4,0,0.2,1);
+}
+[data-theme="light"] {
+  --bg:           #f0f4fa;
+  --bg2:          #e8eef8;
+  --bg3:          #dde5f2;
+  --surface:      #ffffff;
+  --surface2:     #eef2fb;
+  --border:       #c8d4e8;
+  --border2:      #aabcd8;
+  --text:         #1a2040;
+  --text2:        #4a5878;
+  --text3:        #8899bb;
+  --accent:       #0077cc;
+  --accent2:      #0055aa;
+  --green:        #00a870;
+  --amber:        #cc8800;
+  --red:          #dd2244;
+  --purple:       #6644cc;
+}
+
+/* ═══════════════════════════════════════════════
+   RESET & BASE
+═══════════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; overflow: hidden; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  display: flex;
+  transition: background 0.3s, color 0.3s;
+}
+button { cursor: pointer; border: none; outline: none; font-family: inherit; }
+a { text-decoration: none; color: inherit; }
+ul { list-style: none; }
+
+/* ═══════════════════════════════════════════════
+   SCROLLBAR
+═══════════════════════════════════════════════ */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+/* ═══════════════════════════════════════════════
+   SIDEBAR
+═══════════════════════════════════════════════ */
+#sidebar {
+  width: var(--sidebar-w);
+  min-width: var(--sidebar-w);
+  height: 100vh;
+  background: var(--bg2);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  transition: var(--trans);
+  overflow: hidden;
+  position: relative;
+  z-index: 100;
+}
+#sidebar.collapsed {
+  min-width: 0;
+  width: 0;
+}
+
+.sidebar-logo {
+  padding: 20px 20px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.sidebar-logo .logo-mark {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.logo-icon {
+  width: 36px;
+  height: 36px;
+  background: linear-gradient(135deg, var(--accent), var(--purple));
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.logo-icon svg { width: 20px; height: 20px; fill: #fff; }
+.logo-text { white-space: nowrap; }
+.logo-text strong { font-size: 16px; font-weight: 800; letter-spacing: -0.3px; display: block; }
+.logo-text span { font-size: 10px; color: var(--text3); font-family: var(--font-mono); letter-spacing: 1px; text-transform: uppercase; }
+
+/* Theme toggle */
+.theme-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--bg3);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  white-space: nowrap;
+  width: 100%;
+  color: var(--text2);
+  font-size: 12px;
+  transition: var(--trans);
+}
+.theme-toggle:hover { border-color: var(--accent); color: var(--text); }
+.toggle-track {
+  width: 30px;
+  height: 16px;
+  background: var(--border2);
+  border-radius: 10px;
+  position: relative;
+  transition: var(--trans);
+  flex-shrink: 0;
+}
+[data-theme="light"] .toggle-track { background: var(--accent); }
+.toggle-thumb {
+  width: 12px;
+  height: 12px;
+  background: #fff;
+  border-radius: 50%;
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  transition: var(--trans);
+}
+[data-theme="light"] .toggle-thumb { transform: translateX(14px); }
+
+/* Nav */
+.sidebar-nav {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 0;
+}
+.nav-section {
+  padding: 6px 12px 2px;
+  font-size: 9px;
+  font-family: var(--font-mono);
+  color: var(--text3);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.nav-item {
+  position: relative;
+}
+.nav-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 20px;
+  color: var(--text2);
+  font-size: 13px;
+  font-weight: 600;
+  transition: var(--trans);
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+}
+.nav-link:hover { color: var(--text); background: var(--surface); }
+.nav-link.active { color: var(--accent); }
+.nav-link.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 3px;
+  background: var(--accent);
+  border-radius: 0 2px 2px 0;
+}
+.nav-link svg { width: 16px; height: 16px; flex-shrink: 0; stroke: currentColor; fill: none; stroke-width: 1.8; }
+.nav-chevron {
+  margin-left: auto;
+  width: 14px;
+  height: 14px;
+  transition: transform 0.2s;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  flex-shrink: 0;
+}
+.nav-item.open .nav-chevron { transform: rotate(180deg); }
+
+.nav-dropdown {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.28s ease;
+}
+.nav-item.open .nav-dropdown { max-height: 200px; }
+.nav-dropdown a {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 20px 7px 46px;
+  font-size: 12px;
+  color: var(--text3);
+  transition: var(--trans);
+}
+.nav-dropdown a:hover { color: var(--text); background: var(--surface); }
+.nav-dot { width: 4px; height: 4px; border-radius: 50%; background: var(--border2); flex-shrink: 0; }
+
+/* Sidebar footer */
+.sidebar-footer {
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.tenant-card {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  white-space: nowrap;
+}
+.tenant-card .label { font-size: 10px; color: var(--text3); font-family: var(--font-mono); }
+.tenant-card .value { font-size: 12px; color: var(--text); font-weight: 600; margin-top: 2px; }
+.tenant-card .status { display: flex; align-items: center; gap: 5px; margin-top: 6px; font-size: 11px; color: var(--green); }
+.status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); flex-shrink: 0; animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+/* ═══════════════════════════════════════════════
+   MAIN AREA
+═══════════════════════════════════════════════ */
+#main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+
+/* Header */
+#topbar {
+  height: var(--hdr);
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 12px;
+  flex-shrink: 0;
+  z-index: 50;
+}
+#sidebar-toggle {
+  width: 32px;
+  height: 32px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 4px;
+  flex-shrink: 0;
+  transition: var(--trans);
+}
+#sidebar-toggle:hover { border-color: var(--accent); }
+#sidebar-toggle span {
+  width: 14px;
+  height: 1.5px;
+  background: var(--text2);
+  border-radius: 1px;
+  transition: var(--trans);
+  display: block;
+}
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text3);
+  font-family: var(--font-mono);
+}
+.breadcrumb strong { color: var(--text); font-weight: 400; }
+.breadcrumb span { color: var(--text3); }
+
+.topbar-spacer { flex: 1; }
+
+.topbar-stats {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+.tstat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+}
+.tstat .val { font-size: 15px; font-weight: 800; line-height: 1; }
+.tstat .lbl { font-size: 9px; color: var(--text3); font-family: var(--font-mono); letter-spacing: 0.5px; text-transform: uppercase; }
+.tstat.green .val { color: var(--green); }
+.tstat.amber .val { color: var(--amber); }
+.tstat.red .val { color: var(--red); }
+.tstat.accent .val { color: var(--accent); }
+
+.topbar-divider { width: 1px; height: 28px; background: var(--border); }
+
+#connect-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 14px;
+  background: linear-gradient(135deg, var(--accent), var(--purple));
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 6px;
+  letter-spacing: 0.3px;
+  transition: var(--trans);
+  white-space: nowrap;
+}
+#connect-btn:hover { opacity: 0.88; transform: translateY(-1px); }
+#connect-btn svg { width: 14px; height: 14px; fill: none; stroke: #fff; stroke-width: 2; }
+
+/* ═══════════════════════════════════════════════
+   CANVAS AREA
+═══════════════════════════════════════════════ */
+#canvas-wrapper {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+#three-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* ═══════════════════════════════════════════════
+   VIEWPORT CONTROLS (top-right)
+═══════════════════════════════════════════════ */
+#viewport-controls {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 40;
+}
+
+.vp-panel {
+  background: rgba(10,12,16,0.85);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+[data-theme="light"] .vp-panel {
+  background: rgba(240,244,250,0.88);
+}
+
+.vp-label {
+  font-size: 9px;
+  color: var(--text3);
+  font-family: var(--font-mono);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-bottom: 7px;
+}
+
+.vp-btn-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.vp-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 10px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text2);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  transition: var(--trans);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.vp-btn:hover { border-color: var(--accent); color: var(--accent); }
+.vp-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(0,212,255,0.06); }
+.vp-btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2; flex-shrink: 0; }
+
+/* Filter pills */
+.filter-pills {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.pill {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: var(--trans);
+  background: var(--bg3);
+  color: var(--text2);
+  white-space: nowrap;
+}
+.pill:hover { border-color: var(--border2); color: var(--text); }
+.pill.active { color: #fff; }
+.pill-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.pill[data-group="defender"].active  { background: rgba(255,74,107,0.15); border-color: var(--red); color: var(--red); }
+.pill[data-group="intune"].active    { background: rgba(0,229,160,0.12); border-color: var(--green); color: var(--green); }
+.pill[data-group="entra"].active     { background: rgba(0,212,255,0.10); border-color: var(--accent); color: var(--accent); }
+.pill[data-group="exchange"].active  { background: rgba(255,179,64,0.12); border-color: var(--amber); color: var(--amber); }
+.pill[data-group="teams"].active     { background: rgba(155,109,255,0.12); border-color: var(--purple); color: var(--purple); }
+.pill[data-group="sharepoint"].active { background: rgba(0,136,204,0.12); border-color: var(--accent2); color: var(--accent2); }
+
+/* Score indicator */
+.score-ring-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+}
+.score-ring-wrap svg { width: 44px; height: 44px; }
+.score-info .score-val { font-size: 18px; font-weight: 800; color: var(--accent); line-height: 1; }
+.score-info .score-lbl { font-size: 9px; color: var(--text3); font-family: var(--font-mono); margin-top: 2px; }
+
+/* ═══════════════════════════════════════════════
+   LOADING OVERLAY
+═══════════════════════════════════════════════ */
+#loading-overlay {
+  position: absolute;
+  inset: 0;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  transition: opacity 0.6s;
+}
+#loading-overlay.hidden { opacity: 0; pointer-events: none; }
+.loading-logo {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  margin-bottom: 32px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.loading-logo span { color: var(--accent); }
+.loading-bar-track {
+  width: 280px;
+  height: 2px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+.loading-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--purple));
+  border-radius: 2px;
+  width: 0%;
+  transition: width 0.4s ease;
+}
+.loading-msg {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text3);
+}
+
+/* ═══════════════════════════════════════════════
+   NODE TOOLTIP
+═══════════════════════════════════════════════ */
+#node-tooltip {
+  position: absolute;
+  pointer-events: none;
+  z-index: 60;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.15s, transform 0.15s;
+  max-width: 220px;
+}
+#node-tooltip.visible { opacity: 1; transform: translateY(0); }
+.tooltip-inner {
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  padding: 10px 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+}
+.tooltip-group { font-size: 9px; color: var(--text3); font-family: var(--font-mono); letter-spacing: 1px; text-transform: uppercase; }
+.tooltip-name { font-size: 13px; font-weight: 700; margin: 3px 0 6px; line-height: 1.3; }
+.tooltip-score {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.tooltip-bar {
+  flex: 1;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.tooltip-bar-fill { height: 100%; border-radius: 2px; }
+
+/* ═══════════════════════════════════════════════
+   CONTROL MODAL
+═══════════════════════════════════════════════ */
+#modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  backdrop-filter: blur(4px);
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+#modal-overlay.open { opacity: 1; pointer-events: all; }
+#control-modal {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  width: min(640px, calc(100vw - 32px));
+  max-height: calc(100vh - 60px);
+  overflow-y: auto;
+  transform: scale(0.95) translateY(12px);
+  transition: transform 0.22s cubic-bezier(0.4,0,0.2,1);
+  box-shadow: 0 24px 80px rgba(0,0,0,0.5);
+}
+#modal-overlay.open #control-modal { transform: scale(1) translateY(0); }
+
+.modal-header {
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.modal-group-badge {
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+.modal-title-block { flex: 1; }
+.modal-control-id { font-size: 10px; color: var(--text3); font-family: var(--font-mono); }
+.modal-title { font-size: 18px; font-weight: 800; margin: 4px 0 6px; line-height: 1.3; }
+.modal-desc { font-size: 13px; color: var(--text2); line-height: 1.6; }
+.modal-close {
+  width: 28px;
+  height: 28px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 16px;
+  color: var(--text3);
+  cursor: pointer;
+  transition: var(--trans);
+}
+.modal-close:hover { border-color: var(--red); color: var(--red); }
+
+.modal-body { padding: 20px 24px; }
+
+.modal-score-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.msb-track {
+  flex: 1;
+  height: 8px;
+  background: var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.msb-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.6s cubic-bezier(0.4,0,0.2,1);
+}
+.msb-val { font-size: 13px; font-weight: 800; font-family: var(--font-mono); width: 36px; text-align: right; }
+.msb-lbl { font-size: 11px; color: var(--text3); font-family: var(--font-mono); }
+
+.modal-section-title {
+  font-size: 10px;
+  color: var(--text3);
+  font-family: var(--font-mono);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+.modal-controls-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+.control-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition: var(--trans);
+}
+.control-row:hover { border-color: var(--border2); }
+.control-info { flex: 1 }
+.control-name { font-size: 13px; font-weight: 600; }
+.control-sub { font-size: 11px; color: var(--text3); margin-top: 2px; font-family: var(--font-mono); }
+
+/* Toggle switch */
+.toggle-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.toggle-label { font-size: 9px; font-family: var(--font-mono); color: var(--text3); letter-spacing: 0.5px; }
+.sw-toggle {
+  width: 36px;
+  height: 20px;
+  background: var(--border);
+  border-radius: 10px;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.sw-toggle.on { background: var(--green); }
+.sw-toggle.report { background: var(--amber); }
+.sw-thumb {
+  width: 16px;
+  height: 16px;
+  background: #fff;
+  border-radius: 50%;
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  transition: transform 0.2s;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+}
+.sw-toggle.on .sw-thumb, .sw-toggle.report .sw-thumb { transform: translateX(16px); }
+
+.mode-btns {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+.mode-btn {
+  padding: 3px 7px;
+  border-radius: 4px;
+  font-size: 9px;
+  font-family: var(--font-mono);
+  border: 1px solid var(--border);
+  background: var(--bg3);
+  color: var(--text3);
+  cursor: pointer;
+  transition: var(--trans);
+}
+.mode-btn.active-on { border-color: var(--green); color: var(--green); background: rgba(0,229,160,0.08); }
+.mode-btn.active-report { border-color: var(--amber); color: var(--amber); background: rgba(255,179,64,0.08); }
+.mode-btn.active-off { border-color: var(--red); color: var(--red); background: rgba(255,74,107,0.08); }
+
+.modal-image-placeholder {
+  background: var(--bg3);
+  border: 1px dashed var(--border2);
+  border-radius: var(--radius);
+  height: 140px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text3);
+  font-size: 12px;
+  font-family: var(--font-mono);
+}
+.modal-image-placeholder svg { width: 28px; height: 28px; stroke: var(--text3); fill: none; stroke-width: 1.5; }
+
+.modal-footer {
+  padding: 14px 24px 20px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.btn-secondary {
+  padding: 8px 16px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text2);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--trans);
+}
+.btn-secondary:hover { border-color: var(--border2); color: var(--text); }
+.btn-primary {
+  padding: 8px 18px;
+  background: linear-gradient(135deg, var(--accent), var(--purple));
+  border-radius: 6px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: var(--trans);
+}
+.btn-primary:hover { opacity: 0.88; }
+
+/* ═══════════════════════════════════════════════
+   CONNECT MODAL
+═══════════════════════════════════════════════ */
+#connect-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(6px);
+  z-index: 400;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+#connect-modal-overlay.open { opacity: 1; pointer-events: all; }
+#connect-modal {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  width: min(480px, calc(100vw - 32px));
+  transform: scale(0.95) translateY(16px);
+  transition: transform 0.22s cubic-bezier(0.4,0,0.2,1);
+  box-shadow: 0 32px 80px rgba(0,0,0,0.5);
+  overflow: hidden;
+}
+#connect-modal-overlay.open #connect-modal { transform: scale(1) translateY(0); }
+.cm-header {
+  padding: 24px 24px 0;
+  text-align: center;
+}
+.cm-icon {
+  width: 52px;
+  height: 52px;
+  background: linear-gradient(135deg, rgba(0,212,255,0.15), rgba(155,109,255,0.15));
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 14px;
+}
+.cm-icon svg { width: 26px; height: 26px; fill: none; stroke: var(--accent); stroke-width: 1.8; }
+.cm-title { font-size: 20px; font-weight: 800; }
+.cm-sub { font-size: 13px; color: var(--text2); margin-top: 6px; line-height: 1.5; }
+.cm-body { padding: 20px 24px; }
+.field-group { margin-bottom: 14px; }
+.field-label { font-size: 11px; color: var(--text3); font-family: var(--font-mono); margin-bottom: 5px; display: block; }
+.field-input {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 13px;
+  font-family: var(--font-ui);
+  transition: var(--trans);
+  outline: none;
+}
+.field-input:focus { border-color: var(--accent); }
+.cm-footer { padding: 0 24px 24px; display: flex; flex-direction: column; gap: 8px; }
+.btn-connect {
+  width: 100%;
+  padding: 12px;
+  background: linear-gradient(135deg, #0072c6, #00b7c3);
+  border-radius: 8px;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: var(--trans);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.btn-connect:hover { opacity: 0.9; transform: translateY(-1px); }
+.btn-connect svg { width: 16px; height: 16px; fill: none; stroke: #fff; stroke-width: 2; }
+.cm-note { font-size: 11px; color: var(--text3); text-align: center; font-family: var(--font-mono); }
+
+/* ═══════════════════════════════════════════════
+   STATUS BAR
+═══════════════════════════════════════════════ */
+#statusbar {
+  height: 24px;
+  background: var(--bg2);
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 16px;
+  flex-shrink: 0;
+}
+.sb-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  color: var(--text3);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+.sb-item .sb-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+
+/* ═══════════════════════════════════════════════
+   RESPONSIVE
+═══════════════════════════════════════════════ */
+@media (max-width: 768px) {
+  :root { --sidebar-w: 220px; }
+  .topbar-stats { display: none; }
+  #sidebar { position: absolute; z-index: 200; height: 100%; }
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════ SIDEBAR ═══════════════ -->
+<aside id="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-mark">
+      <div class="logo-icon">
+        <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+      </div>
+      <div class="logo-text">
+        <strong>SecureGrid</strong>
+        <span>M365 Hardening</span>
+      </div>
+    </div>
+    <button class="theme-toggle" id="theme-toggle">
+      <div class="toggle-track"><div class="toggle-thumb"></div></div>
+      <span id="theme-label">Light Mode</span>
+    </button>
+  </div>
+
+  <nav class="sidebar-nav">
+    <div class="nav-section">Main</div>
+
+    <div class="nav-item">
+      <div class="nav-link active">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        Control Grid
+      </div>
+    </div>
+
+    <div class="nav-item" id="nav-reports">
+      <div class="nav-link" onclick="toggleDropdown('nav-reports')">
+        <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        Reports
+        <svg class="nav-chevron" viewBox="0 0 24 24"><polyline points="6,9 12,15 18,9"/></svg>
+      </div>
+      <div class="nav-dropdown">
+        <a href="#"><span class="nav-dot"></span>Compliance Summary</a>
+        <a href="#"><span class="nav-dot"></span>Gap Analysis</a>
+        <a href="#"><span class="nav-dot"></span>Remediation Plan</a>
+        <a href="#"><span class="nav-dot"></span>Export PDF</a>
+      </div>
+    </div>
+
+    <div class="nav-item" id="nav-policies">
+      <div class="nav-link" onclick="toggleDropdown('nav-policies')">
+        <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        Policies
+        <svg class="nav-chevron" viewBox="0 0 24 24"><polyline points="6,9 12,15 18,9"/></svg>
+      </div>
+      <div class="nav-dropdown">
+        <a href="#"><span class="nav-dot"></span>Baseline Profiles</a>
+        <a href="#"><span class="nav-dot"></span>Custom Rules</a>
+        <a href="#"><span class="nav-dot"></span>Exceptions</a>
+      </div>
+    </div>
+
+    <div class="nav-section" style="margin-top:8px">Workloads</div>
+
+    <div class="nav-item">
+      <div class="nav-link">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        Defender
+      </div>
+    </div>
+    <div class="nav-item">
+      <div class="nav-link">
+        <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><polyline points="8,21 12,17 16,21"/></svg>
+        Intune
+      </div>
+    </div>
+    <div class="nav-item">
+      <div class="nav-link">
+        <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+        Entra ID
+      </div>
+    </div>
+  </nav>
+
+  <div class="sidebar-footer">
+    <div class="tenant-card">
+      <div class="label">CONNECTED TENANT</div>
+      <div class="value" id="tenant-name">— Not connected —</div>
+      <div class="status" id="tenant-status">
+        <span class="status-dot" style="background:var(--border2); animation:none"></span>
+        <span id="status-text">Click Connect to start</span>
+      </div>
+    </div>
+  </div>
+</aside>
+
+<!-- ═══════════════ MAIN ═══════════════ -->
+<div id="main">
+  <!-- Topbar -->
+  <header id="topbar">
+    <button id="sidebar-toggle" onclick="toggleSidebar()">
+      <span></span><span></span><span></span>
+    </button>
+    <div class="breadcrumb">
+      <span>SecureGrid</span>
+      <span>/</span>
+      <strong>Control Grid</strong>
+    </div>
+    <div class="topbar-spacer"></div>
+    <div class="topbar-stats">
+      <div class="tstat green">
+        <div class="val" id="stat-compliant">0</div>
+        <div class="lbl">Compliant</div>
+      </div>
+      <div class="tstat amber">
+        <div class="val" id="stat-partial">0</div>
+        <div class="lbl">Partial</div>
+      </div>
+      <div class="tstat red">
+        <div class="val" id="stat-failed">0</div>
+        <div class="lbl">Failed</div>
+      </div>
+      <div class="tstat accent">
+        <div class="val" id="stat-total">440</div>
+        <div class="lbl">Total</div>
+      </div>
+    </div>
+    <div class="topbar-divider"></div>
+    <button id="connect-btn" onclick="openConnectModal()">
+      <svg viewBox="0 0 24 24"><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4"/><polyline points="10,17 15,12 10,7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+      Connect M365
+    </button>
+  </header>
+
+  <!-- Canvas -->
+  <div id="canvas-wrapper">
+    <canvas id="three-canvas"></canvas>
+
+    <!-- Viewport Controls -->
+    <div id="viewport-controls">
+      <!-- Score ring -->
+      <div class="vp-panel">
+        <div class="vp-label">Secure Score</div>
+        <div class="score-ring-wrap">
+          <svg viewBox="0 0 44 44">
+            <circle cx="22" cy="22" r="18" fill="none" stroke="var(--border)" stroke-width="4"/>
+            <circle id="score-arc" cx="22" cy="22" r="18" fill="none" stroke="var(--accent)" stroke-width="4"
+              stroke-dasharray="0 113.1" stroke-linecap="round"
+              transform="rotate(-90 22 22)" style="transition:stroke-dasharray 1s ease"/>
+          </svg>
+          <div class="score-info">
+            <div class="score-val" id="score-val">0%</div>
+            <div class="score-lbl">SCORE</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- View controls -->
+      <div class="vp-panel">
+        <div class="vp-label">View</div>
+        <div class="vp-btn-group">
+          <button class="vp-btn" onclick="resetCamera()">
+            <svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 109-9M3 3v6h6"/></svg> Reset View
+          </button>
+          <button class="vp-btn" id="btn-flat" onclick="setView('flat')">
+            <svg viewBox="0 0 24 24"><rect x="3" y="10" width="18" height="4" rx="1"/></svg> Flat View
+          </button>
+          <button class="vp-btn active" id="btn-3d" onclick="setView('3d')">
+            <svg viewBox="0 0 24 24"><path d="M12 2l9 5v10l-9 5-9-5V7z"/></svg> 3D View
+          </button>
+          <button class="vp-btn" id="btn-rotate" onclick="toggleAutoRotate()">
+            <svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 0110 10"/><path d="M22 12a10 10 0 01-10 10"/><polyline points="16,8 22,12 16,16"/></svg> Auto Rotate
+          </button>
+        </div>
+        <div class="vp-label" style="margin-top:10px">Orbit Intuition</div>
+        <div class="vp-btn-group">
+          <button class="vp-btn" id="btn-invert-yaw" onclick="toggleInvertAxis('yaw')">
+            <svg viewBox="0 0 24 24"><path d="M4 12h16"/><path d="M9 7l-5 5 5 5"/><path d="M15 7l5 5-5 5"/></svg> Invert Yaw
+          </button>
+          <button class="vp-btn" id="btn-invert-pitch" onclick="toggleInvertAxis('pitch')">
+            <svg viewBox="0 0 24 24"><path d="M12 4v16"/><path d="M7 9l5-5 5 5"/><path d="M7 15l5 5 5-5"/></svg> Invert Pitch
+          </button>
+        </div>
+      </div>
+
+      <!-- Group filters -->
+      <div class="vp-panel">
+        <div class="vp-label">Filter Groups</div>
+        <div class="filter-pills">
+          <div class="pill active" data-group="defender"  onclick="toggleGroup(this)"><span class="pill-dot" style="background:var(--red)"></span>Defender</div>
+          <div class="pill active" data-group="intune"    onclick="toggleGroup(this)"><span class="pill-dot" style="background:var(--green)"></span>Intune</div>
+          <div class="pill active" data-group="entra"     onclick="toggleGroup(this)"><span class="pill-dot" style="background:var(--accent)"></span>Entra ID</div>
+          <div class="pill active" data-group="exchange"  onclick="toggleGroup(this)"><span class="pill-dot" style="background:var(--amber)"></span>Exchange</div>
+          <div class="pill active" data-group="teams"     onclick="toggleGroup(this)"><span class="pill-dot" style="background:var(--purple)"></span>Teams</div>
+          <div class="pill active" data-group="sharepoint" onclick="toggleGroup(this)"><span class="pill-dot" style="background:var(--accent2)"></span>SharePoint</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tooltip -->
+    <div id="node-tooltip">
+      <div class="tooltip-inner">
+        <div class="tooltip-group" id="tt-group">—</div>
+        <div class="tooltip-name" id="tt-name">—</div>
+        <div class="tooltip-score">
+          <div class="tooltip-bar"><div class="tooltip-bar-fill" id="tt-bar" style="width:0%"></div></div>
+          <span id="tt-score" style="font-family:var(--font-mono);font-size:11px">—</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Loading overlay -->
+    <div id="loading-overlay">
+      <div class="loading-logo">
+        <div class="logo-icon" style="width:40px;height:40px">
+          <svg viewBox="0 0 24 24" style="width:22px;height:22px;fill:#fff"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        </div>
+        Secure<span>Grid</span>
+      </div>
+      <div class="loading-bar-track"><div class="loading-bar-fill" id="loading-bar"></div></div>
+      <div class="loading-msg" id="loading-msg">Initializing engine…</div>
+    </div>
+  </div>
+
+  <!-- Status bar -->
+  <div id="statusbar">
+    <div class="sb-item"><span class="sb-dot" style="background:var(--green)"></span>Engine Ready</div>
+    <div class="sb-item"><span class="sb-dot" style="background:var(--border2)"></span><span id="sb-tenant">No tenant connected</span></div>
+    <div class="sb-item" style="margin-left:auto"><span id="sb-nodes">0 nodes loaded</span></div>
+    <div class="sb-item">Drag to orbit • Scroll to zoom • Hover inflates nearby peaks</div>
+  </div>
+</div>
+
+<!-- ═══════════════ CONTROL MODAL ═══════════════ -->
+<div id="modal-overlay" onclick="closeModal(event)">
+  <div id="control-modal">
+    <div class="modal-header">
+      <div class="modal-group-badge" id="modal-badge">—</div>
+      <div class="modal-title-block">
+        <div class="modal-control-id" id="modal-ctrl-id">—</div>
+        <div class="modal-title" id="modal-ctrl-title">—</div>
+        <div class="modal-desc" id="modal-ctrl-desc">—</div>
+      </div>
+      <button class="modal-close" onclick="document.getElementById('modal-overlay').classList.remove('open')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-score-bar">
+        <div class="msb-lbl">Score</div>
+        <div class="msb-track"><div class="msb-fill" id="modal-score-fill" style="width:0%"></div></div>
+        <div class="msb-val" id="modal-score-val">0</div>
+      </div>
+
+      <div class="modal-section-title">Sub-Controls</div>
+      <div class="modal-controls-grid" id="modal-controls-list">
+        <!-- injected -->
+      </div>
+
+      <div class="modal-section-title" style="margin-top:16px">Reference Screenshot</div>
+      <div class="modal-image-placeholder">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21,15 16,10 5,21"/></svg>
+        Configuration screenshot will appear here
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="document.getElementById('modal-overlay').classList.remove('open')">Close</button>
+      <button class="btn-primary">Apply Changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ CONNECT MODAL ═══════════════ -->
+<div id="connect-modal-overlay" onclick="closeConnectModal(event)">
+  <div id="connect-modal">
+    <div class="cm-header">
+      <div class="cm-icon">
+        <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      </div>
+      <div class="cm-title">Connect to Microsoft 365</div>
+      <div class="cm-sub">Enter your tenant credentials to load security controls via Microsoft Graph.</div>
+    </div>
+    <div class="cm-body">
+      <div class="field-group">
+        <label class="field-label">TENANT ID OR DOMAIN</label>
+        <input class="field-input" type="text" placeholder="contoso.onmicrosoft.com or xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" id="inp-tenant"/>
+      </div>
+      <div class="field-group">
+        <label class="field-label">CLIENT ID (APP REGISTRATION)</label>
+        <input class="field-input" type="text" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" id="inp-client"/>
+      </div>
+      <div class="field-group">
+        <label class="field-label">CLIENT SECRET ID</label>
+        <input class="field-input" type="text" placeholder="Optional operator reference for the active secret" id="inp-secret-id"/>
+      </div>
+      <div class="field-group">
+        <label class="field-label">CLIENT SECRET VALUE</label>
+        <input class="field-input" type="password" placeholder="Paste the secret value issued by Microsoft Entra" id="inp-secret-value"/>
+      </div>
+    </div>
+    <div class="cm-footer">
+      <button class="btn-connect" onclick="simulateConnect()">
+        <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        Authenticate with Azure App Credentials
+      </button>
+      <div class="cm-note">Uses OAuth 2.0 client credentials flow. The secret ID is a reference value; the secret value is the actual credential used for token acquisition.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ SCRIPT ═══════════════ -->
+<script>
+/* ─────────────────────────────────────────
+   DATA MODEL — 440 controls across 6 groups
+───────────────────────────────────────── */
+const GROUPS = {
+  defender:   { color: 0xff4a6b, name: 'Defender',   hex: '#ff4a6b', count: 88 },
+  intune:     { color: 0x00e5a0, name: 'Intune',     hex: '#00e5a0', count: 72 },
+  entra:      { color: 0x00d4ff, name: 'Entra ID',   hex: '#00d4ff', count: 95 },
+  exchange:   { color: 0xffb340, name: 'Exchange',   hex: '#ffb340', count: 65 },
+  teams:      { color: 0x9b6dff, name: 'Teams',      hex: '#9b6dff', count: 58 },
+  sharepoint: { color: 0x0088cc, name: 'SharePoint', hex: '#0088cc', count: 62 }
+};
+
+const CONTROL_NAMES = {
+  defender:   ['MFA Enforcement','Conditional Access','Threat Protection','EDR Policy','AV Signatures','Attack Surface Reduction','Safe Links','Safe Attachments','Phishing Protection','DKIM/DMARC'],
+  intune:     ['Device Compliance','BitLocker Policy','Windows Update Ring','Endpoint Security','App Protection','Certificate Auth','MDM Authority','Compliance Script','Device Encryption','Health Attestation'],
+  entra:      ['MFA Methods','SSPR Policy','Guest Access','App Consent','PIM Roles','Access Reviews','Sign-in Risk','Token Lifetime','Named Locations','Identity Protection'],
+  exchange:   ['Anti-Spam','Outbound Spam','Malware Filter','Connection Filter','Transport Rules','DKIM Signing','Spoofing Intelligence','Quarantine Policy','Safe Domains','Mail Flow Rules'],
+  teams:      ['Guest Meeting Access','External Access','Retention Policy','Data Loss Prevention','Meeting Security','Channel Policy','App Permissions','Recording Policy','Lobby Policy','Information Barriers'],
+  sharepoint: ['External Sharing','Access Control','Sensitivity Labels','Versioning Policy','Site Classification','DLP Policy','OneDrive Sync','Legacy Auth Block','Link Expiry','B2B Policy']
+};
+
+let controlData = [];
+let activeGroups = new Set(Object.keys(GROUPS));
+let isConnected = false;
+let autoRotate = false;
+let invertYaw = false;
+let invertPitch = false;
+
+const GROUP_IMPACT_BASE = {
+  defender: 0.96,
+  intune: 0.82,
+  entra: 0.9,
+  exchange: 0.78,
+  teams: 0.7,
+  sharepoint: 0.74
+};
+
+const GROUP_LAYOUT = {
+  defender:   { center: { x: -36, z: -20 }, stretchX: 1.2,  stretchZ: 0.96, swirl: 0.2,  seed: 11 },
+  intune:     { center: { x: -10, z: 18 },  stretchX: 1.06, stretchZ: 1.18, swirl: 1.3,  seed: 23 },
+  entra:      { center: { x: 18,  z: -16 }, stretchX: 1.18, stretchZ: 0.94, swirl: 2.05, seed: 37 },
+  exchange:   { center: { x: 42,  z: 14 },  stretchX: 1.14, stretchZ: 1.02, swirl: 2.92, seed: 41 },
+  teams:      { center: { x: 18,  z: 40 },  stretchX: 1.08, stretchZ: 1.12, swirl: 3.58, seed: 53 },
+  sharepoint: { center: { x: -42, z: 38 },  stretchX: 1.22, stretchZ: 1.08, swirl: 4.35, seed: 67 }
+};
+
+const CAMERA_DEFAULT = { theta: 0.62, phi: 1.08, radius: 118 };
+const LANDSCAPE_LOOK_AT = new THREE.Vector3(-1, 10, 12);
+const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+const HOVER_RADIUS_PX = 120;
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function lerp(start, end, factor) {
+  return start + (end - start) * factor;
+}
+
+function seededNoise(seed) {
+  const value = Math.sin(seed * 12.9898 + 78.233) * 43758.5453123;
+  return value - Math.floor(value);
+}
+
+function computeImpact(groupKey, index, count) {
+  const base = GROUP_IMPACT_BASE[groupKey];
+  const rankBias = 1 - (index / Math.max(count - 1, 1));
+  const noise = seededNoise((index + 1) * 31.77 + base * 97);
+  const impact = (base * 0.56) + (rankBias * 0.26) + (noise * 0.24);
+  return Math.round(clamp(impact * 100, 24, 100));
+}
+
+function computeScore(groupKey, index) {
+  const base = GROUP_IMPACT_BASE[groupKey];
+  const dropout = seededNoise((index + 1) * 17.33 + base * 53);
+  if (dropout < 0.13) return 0;
+  const body = seededNoise((index + 1) * 7.91 + base * 29);
+  return Math.round(clamp((0.22 + body * 0.78) * 100, 0, 100));
+}
+
+function computeNodeHeight(ctrl) {
+  const scoreWeight = ctrl.score / 100;
+  const impactWeight = ctrl.impact / 100;
+  const terrainWeight = (impactWeight * 0.62) + (scoreWeight * 0.38);
+  return Math.pow(terrainWeight, 1.08) * 22 + (impactWeight * 9);
+}
+
+function generateControls() {
+  controlData = [];
+  let id = 1;
+  for (const [gKey, gVal] of Object.entries(GROUPS)) {
+    const names = CONTROL_NAMES[gKey];
+    for (let i = 0; i < gVal.count; i++) {
+      const score = computeScore(gKey, i);
+      const impact = computeImpact(gKey, i, gVal.count);
+      controlData.push({
+        id: `CTRL-${String(id).padStart(4,'0')}`,
+        group: gKey,
+        groupName: gVal.name,
+        name: names[i % names.length] + (i >= names.length ? ` (${Math.floor(i / names.length) + 1})` : ''),
+        score,
+        impact,
+        desc: `This control manages ${names[i % names.length].toLowerCase()} configuration for ${gVal.name} workload. Impact ${impact} raises how dramatically it shapes the security landscape, while score ${score} reflects current posture.`,
+        subControls: [
+          { name: 'Policy Configuration', state: score > 60 ? 'on' : score > 30 ? 'report' : 'off' },
+          { name: 'User Assignment', state: score > 40 ? 'on' : 'off' },
+          { name: 'Enforcement Mode', state: score > 75 ? 'on' : 'report' },
+        ]
+      });
+      id++;
+    }
+  }
+}
+
+/* ─────────────────────────────────────────
+   THREE.JS SETUP
+───────────────────────────────────────── */
+let scene, camera, renderer, raycaster, mouse;
+let nodeMeshes = [], lineMeshes = [], terrainMeshes = [];
+let isDragging = false, prevMouse = { x: 0, y: 0 }, dragDistance = 0;
+let spherical = { ...CAMERA_DEFAULT };
+let targetSpherical = { ...CAMERA_DEFAULT };
+let flat = false;
+let hoveredNodeIndex = -1;
+let pointerState = { inside: false, localX: 0, localY: 0, ndcX: 0, ndcY: 0 };
+let lastTouch = null;
+let tapCandidate = false;
+
+const canvas = document.getElementById('three-canvas');
+const wrapper = document.getElementById('canvas-wrapper');
+const tooltip = document.getElementById('node-tooltip');
+const tempProjection = new THREE.Vector3();
+const tempMid = new THREE.Vector3();
+const tempDir = new THREE.Vector3();
+const tempSide = new THREE.Vector3();
+const worldUp = new THREE.Vector3(0, 1, 0);
+const hoverLineColor = new THREE.Color(0xffffff);
+
+function initThree() {
+  scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x0a0c10, 0.0058);
+
+  const w = wrapper.clientWidth;
+  const h = wrapper.clientHeight;
+  camera = new THREE.PerspectiveCamera(50, w / h, 0.1, 650);
+  updateCameraPosition();
+
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  renderer.setSize(w, h);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setClearColor(0x000000, 0);
+  renderer.outputEncoding = THREE.sRGBEncoding;
+
+  scene.add(new THREE.HemisphereLight(0xa3cfff, 0x06080d, 0.84));
+
+  const keyLight = new THREE.DirectionalLight(0x7ec8ff, 0.9);
+  keyLight.position.set(-26, 42, 18);
+  scene.add(keyLight);
+
+  const rimLight = new THREE.DirectionalLight(0xff4a6b, 0.28);
+  rimLight.position.set(30, 18, -14);
+  scene.add(rimLight);
+
+  const fillLight = new THREE.PointLight(0x00d4ff, 0.36, 260);
+  fillLight.position.set(0, 34, 18);
+  scene.add(fillLight);
+
+  raycaster = new THREE.Raycaster();
+  mouse = new THREE.Vector2();
+
+  setupEvents();
+  animate();
+}
+
+function disposeSceneItems(items) {
+  const disposedGeometries = new Set();
+  const disposedMaterials = new Set();
+  items.forEach(item => {
+    scene.remove(item);
+    if (item.geometry && !disposedGeometries.has(item.geometry)) {
+      item.geometry.dispose();
+      disposedGeometries.add(item.geometry);
+    }
+    if (item.material && !disposedMaterials.has(item.material)) {
+      item.material.dispose();
+      disposedMaterials.add(item.material);
+    }
+  });
+  items = [];
+  return items;
+}
+
+function updateCameraPosition() {
+  const { theta, phi, radius } = spherical;
+  camera.position.set(
+    radius * Math.sin(phi) * Math.cos(theta),
+    radius * Math.cos(phi),
+    radius * Math.sin(phi) * Math.sin(theta)
+  );
+  camera.lookAt(LANDSCAPE_LOOK_AT);
+}
+
+function addConnection(definitions, adjacency, seen, a, b, kind, color) {
+  if (a === b) return;
+  const key = a < b ? `${a}:${b}` : `${b}:${a}`;
+  if (seen.has(key)) return;
+  seen.add(key);
+  adjacency.get(a).add(b);
+  adjacency.get(b).add(a);
+  definitions.push({ a, b, kind, color });
+}
+
+function buildLandscapeConnections(entries, groupIndexes) {
+  const definitions = [];
+  const adjacency = new Map(entries.map((_, index) => [index, new Set()]));
+  const seen = new Set();
+
+  Object.keys(groupIndexes).forEach(groupKey => {
+    const indexes = groupIndexes[groupKey];
+    if (!indexes || indexes.length < 2) return;
+    const stride = Math.max(3, Math.round(Math.sqrt(indexes.length)));
+
+    for (let i = 0; i < indexes.length; i++) {
+      addConnection(definitions, adjacency, seen, indexes[i], indexes[(i + 1) % indexes.length], 'mesh', GROUPS[groupKey].color);
+      if ((i % 2 === 0) && (i + stride < indexes.length)) {
+        addConnection(definitions, adjacency, seen, indexes[i], indexes[i + stride], 'mesh', GROUPS[groupKey].color);
+      }
+      if ((i % 5 === 0) && (i + stride + 1 < indexes.length)) {
+        addConnection(definitions, adjacency, seen, indexes[i], indexes[i + stride + 1], 'mesh', GROUPS[groupKey].color);
+      }
+    }
+  });
+
+  const visibleGroups = Object.keys(GROUPS).filter(groupKey => groupIndexes[groupKey] && groupIndexes[groupKey].length);
+  for (let i = 0; i < visibleGroups.length; i++) {
+    const groupA = visibleGroups[i];
+    const groupB = visibleGroups[(i + 1) % visibleGroups.length];
+    if (groupA === groupB) continue;
+    addConnection(definitions, adjacency, seen, groupIndexes[groupA][0], groupIndexes[groupB][0], 'bridge', 0x7f9fff);
+  }
+
+  return { definitions, adjacency };
+}
+
+function separateCloseNodes(entries) {
+  const minimumDistance = 2.4;
+  for (let i = 0; i < entries.length; i++) {
+    for (let j = i + 1; j < entries.length; j++) {
+      if (entries[i].ctrl.group !== entries[j].ctrl.group) continue;
+      const dx = entries[j].baseX - entries[i].baseX;
+      const dz = entries[j].baseZ - entries[i].baseZ;
+      const distanceSq = (dx * dx) + (dz * dz);
+      if ((distanceSq === 0) || (distanceSq >= minimumDistance * minimumDistance)) continue;
+
+      const distance = Math.sqrt(distanceSq);
+      const push = (minimumDistance - distance) * 0.18;
+      const nx = dx / distance;
+      const nz = dz / distance;
+      entries[i].baseX -= nx * push;
+      entries[i].baseZ -= nz * push;
+      entries[j].baseX += nx * push;
+      entries[j].baseZ += nz * push;
+    }
+  }
+}
+
+function relaxLandscape(entries, adjacency) {
+  for (let iteration = 0; iteration < 4; iteration++) {
+    const nextPositions = entries.map(entry => ({ x: entry.baseX, z: entry.baseZ }));
+
+    entries.forEach((entry, index) => {
+      const groupCenter = GROUP_LAYOUT[entry.ctrl.group].center;
+      let targetX = lerp(entry.baseX, groupCenter.x, 0.08);
+      let targetZ = lerp(entry.baseZ, groupCenter.z, 0.08);
+      const neighbors = Array.from(adjacency.get(index));
+
+      if (neighbors.length) {
+        let weightedX = 0;
+        let weightedZ = 0;
+        let totalWeight = 0;
+
+        neighbors.forEach(neighborIndex => {
+          const neighbor = entries[neighborIndex];
+          const weight = 0.34 + (neighbor.peakHeight / 24);
+          weightedX += neighbor.baseX * weight;
+          weightedZ += neighbor.baseZ * weight;
+          totalWeight += weight;
+        });
+
+        targetX = lerp(targetX, weightedX / totalWeight, 0.24);
+        targetZ = lerp(targetZ, weightedZ / totalWeight, 0.24);
+      }
+
+      nextPositions[index].x = lerp(entry.baseX, targetX, 0.2);
+      nextPositions[index].z = lerp(entry.baseZ, targetZ, 0.2);
+    });
+
+    entries.forEach((entry, index) => {
+      entry.baseX = nextPositions[index].x;
+      entry.baseZ = nextPositions[index].z;
+    });
+
+    separateCloseNodes(entries);
+  }
+}
+
+function buildTerrainPads(groupIndexes) {
+  terrainMeshes = disposeSceneItems(terrainMeshes);
+
+  Object.keys(groupIndexes).forEach(groupKey => {
+    const layout = GROUP_LAYOUT[groupKey];
+    const g = GROUPS[groupKey];
+    const radius = 7 + (Math.sqrt(groupIndexes[groupKey].length) * 1.5);
+
+    const pad = new THREE.Mesh(
+      new THREE.CircleGeometry(radius, 48),
+      new THREE.MeshBasicMaterial({ color: g.color, transparent: true, opacity: 0.055, depthWrite: false })
+    );
+    pad.rotation.x = -Math.PI / 2;
+    pad.position.set(layout.center.x, -0.9, layout.center.z);
+    pad.userData.baseOpacity = 0.055;
+    scene.add(pad);
+    terrainMeshes.push(pad);
+
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(radius * 0.78, radius * 0.88, 48),
+      new THREE.MeshBasicMaterial({ color: g.color, transparent: true, opacity: 0.09, side: THREE.DoubleSide, depthWrite: false })
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.set(layout.center.x, -0.78, layout.center.z);
+    ring.userData.baseOpacity = 0.09;
+    scene.add(ring);
+    terrainMeshes.push(ring);
+  });
+}
+
+function buildNodes() {
+  nodeMeshes = disposeSceneItems(nodeMeshes);
+  lineMeshes = disposeSceneItems(lineMeshes);
+  terrainMeshes = disposeSceneItems(terrainMeshes);
+  hoveredNodeIndex = -1;
+  tooltip.classList.remove('visible');
+
+  const visible = controlData.filter(ctrl => activeGroups.has(ctrl.group));
+  updateStats(visible);
+  document.getElementById('sb-nodes').textContent = `${visible.length} nodes loaded`;
+  if (!visible.length) return;
+
+  const sphereGeometry = new THREE.SphereGeometry(0.42, 14, 14);
+  const entries = [];
+  const groupIndexes = {};
+
+  Object.keys(GROUPS).forEach(groupKey => {
+    const groupControls = visible
+      .filter(ctrl => ctrl.group === groupKey)
+      .sort((left, right) => (right.impact - left.impact) || (right.score - left.score));
+
+    if (!groupControls.length) return;
+
+    const layout = GROUP_LAYOUT[groupKey];
+    groupIndexes[groupKey] = [];
+
+    groupControls.forEach((ctrl, localIndex) => {
+      const numericId = parseInt(ctrl.id.slice(5), 10);
+      const angularNoise = (seededNoise((numericId * 0.91) + layout.seed) - 0.5) * 0.95;
+      const radialNoise = (seededNoise((numericId * 1.37) + (layout.seed * 4.1)) - 0.5) * 5.4;
+      const radiusBase = 4.4 + (Math.pow(localIndex + 1, 0.56) * 2.8);
+      const compactness = 1 - (ctrl.impact / 175);
+      const radius = Math.max(2.8, (radiusBase * compactness) + radialNoise);
+      const angle = (localIndex * GOLDEN_ANGLE) + layout.swirl + angularNoise;
+
+      const entry = {
+        ctrl,
+        baseX: layout.center.x + (Math.cos(angle) * radius * layout.stretchX),
+        baseZ: layout.center.z + (Math.sin(angle) * radius * layout.stretchZ),
+        peakHeight: computeNodeHeight(ctrl)
+      };
+
+      const index = entries.push(entry) - 1;
+      groupIndexes[groupKey].push(index);
+    });
+  });
+
+  const connectionResult = buildLandscapeConnections(entries, groupIndexes);
+  relaxLandscape(entries, connectionResult.adjacency);
+  buildTerrainPads(groupIndexes);
+
+  entries.forEach((entry, index) => {
+    const ctrl = entry.ctrl;
+    const g = GROUPS[ctrl.group];
+    const impactNorm = ctrl.impact / 100;
+    const scoreNorm = ctrl.score / 100;
+    const material = new THREE.MeshPhongMaterial({
+      color: g.color,
+      emissive: g.color,
+      emissiveIntensity: 0.3 + (impactNorm * 0.18),
+      shininess: 72,
+      transparent: true,
+      opacity: 0.97
+    });
+
+    const mesh = new THREE.Mesh(sphereGeometry, material);
+    const baseScale = 0.76 + (impactNorm * 0.92);
+    mesh.scale.setScalar(baseScale);
+    mesh.position.set(entry.baseX, flat ? 0 : entry.peakHeight, entry.baseZ);
+    mesh.userData = {
+      index,
+      ctrl,
+      baseX: entry.baseX,
+      baseZ: entry.baseZ,
+      peakHeight: entry.peakHeight,
+      heightTarget: flat ? 0 : entry.peakHeight,
+      baseScale,
+      phase: seededNoise(index * 13.37 + impactNorm * 77) * Math.PI * 2,
+      driftAmp: 0.18 + (impactNorm * 0.48),
+      driftSpeed: 0.72 + (scoreNorm * 0.64),
+      breatheAmp: 0.22 + (impactNorm * 1.02),
+      scoreNorm,
+      impactNorm,
+      glow: 0
+    };
+
+    scene.add(mesh);
+    nodeMeshes.push(mesh);
+  });
+
+  connectionResult.definitions.forEach((connection, index) => {
+    const material = new THREE.LineBasicMaterial({
+      color: connection.color,
+      transparent: true,
+      opacity: connection.kind === 'bridge' ? 0.16 : 0.21
+    });
+
+    const line = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(),
+        new THREE.Vector3(),
+        new THREE.Vector3(),
+        new THREE.Vector3()
+      ]),
+      material
+    );
+
+    line.userData = {
+      nodeA: connection.a,
+      nodeB: connection.b,
+      kind: connection.kind,
+      points: [
+        new THREE.Vector3(),
+        new THREE.Vector3(),
+        new THREE.Vector3(),
+        new THREE.Vector3()
+      ],
+      phase: seededNoise(index * 19.17 + connection.a * 3.7 + connection.b * 5.1) * Math.PI * 2,
+      waveSpeed: connection.kind === 'bridge' ? 1.14 : 1.7,
+      waveAmp: connection.kind === 'bridge' ? 0.55 : 0.28,
+      swayAmp: connection.kind === 'bridge' ? 0.68 : 0.26,
+      lift: connection.kind === 'bridge' ? 1.5 : 0.48,
+      baseOpacity: connection.kind === 'bridge' ? 0.16 : 0.21,
+      baseColor: new THREE.Color(connection.color)
+    };
+
+    scene.add(line);
+    lineMeshes.push(line);
+  });
+}
+
+function updateLandscapeLines(time) {
+  lineMeshes.forEach(line => {
+    const data = line.userData;
+    const nodeA = nodeMeshes[data.nodeA];
+    const nodeB = nodeMeshes[data.nodeB];
+    if (!nodeA || !nodeB) return;
+
+    tempMid.copy(nodeA.position).add(nodeB.position).multiplyScalar(0.5);
+    tempDir.copy(nodeB.position).sub(nodeA.position);
+    tempSide.crossVectors(tempDir, worldUp);
+    if (tempSide.lengthSq() < 0.0001) tempSide.set(1, 0, 0);
+    tempSide.normalize();
+
+    const wave = Math.sin((time * data.waveSpeed) + data.phase) * data.waveAmp;
+    const sway = Math.cos((time * data.waveSpeed * 0.72) + data.phase) * data.swayAmp;
+    tempMid.y += data.lift + wave;
+    tempMid.addScaledVector(tempSide, sway);
+
+    data.points[0].copy(nodeA.position);
+    data.points[1].lerpVectors(nodeA.position, tempMid, 0.48);
+    data.points[2].lerpVectors(tempMid, nodeB.position, 0.52);
+    data.points[3].copy(nodeB.position);
+    line.geometry.setFromPoints(data.points);
+
+    const connectedToHover = hoveredNodeIndex >= 0 && ((data.nodeA === hoveredNodeIndex) || (data.nodeB === hoveredNodeIndex));
+    const targetOpacity = connectedToHover ? Math.min(0.52, data.baseOpacity * 2.5) : data.baseOpacity;
+    line.material.opacity = lerp(line.material.opacity, targetOpacity, 0.16);
+    line.material.color.copy(data.baseColor).lerp(hoverLineColor, connectedToHover ? 0.18 : 0);
+  });
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  const time = performance.now() * 0.001;
+  if (autoRotate) targetSpherical.theta += 0.0024;
+
+  spherical.theta += (targetSpherical.theta - spherical.theta) * 0.08;
+  spherical.phi += (targetSpherical.phi - spherical.phi) * 0.08;
+  spherical.radius += (targetSpherical.radius - spherical.radius) * 0.08;
+  updateCameraPosition();
+
+  updateHoverState();
+  const hoveredMesh = hoveredNodeIndex >= 0 ? nodeMeshes[hoveredNodeIndex] : null;
+
+  nodeMeshes.forEach((mesh, index) => {
+    const data = mesh.userData;
+    const targetGlow = index === hoveredNodeIndex ? 1 : 0;
+    data.glow = lerp(data.glow, targetGlow, index === hoveredNodeIndex ? 0.26 : 0.08);
+
+    const driftX = Math.sin((time * data.driftSpeed) + data.phase) * data.driftAmp;
+    const driftZ = Math.cos((time * data.driftSpeed * 0.82) + (data.phase * 1.18)) * data.driftAmp;
+    const breath = Math.sin((time * (0.92 + data.impactNorm * 0.82)) + data.phase) * data.breatheAmp;
+
+    let targetX = data.baseX + driftX;
+    let targetZ = data.baseZ + driftZ;
+    let targetY = flat ? 0 : data.heightTarget + breath;
+    let targetScale = data.baseScale * (1 + (Math.sin((time * 0.9) + data.phase) * 0.025));
+
+    if (hoveredMesh) {
+      if (index === hoveredNodeIndex) {
+        targetScale *= 1.95;
+        targetY += 1.8 + (Math.sin((time * 3) + data.phase) * 0.22);
+      } else {
+        const dx = targetX - hoveredMesh.position.x;
+        const dz = targetZ - hoveredMesh.position.z;
+        const distance = Math.max(Math.hypot(dx, dz), 0.001);
+        const influenceRadius = 9.5;
+        if (distance < influenceRadius) {
+          const force = (1 - (distance / influenceRadius)) * 2.9;
+          targetX += (dx / distance) * force;
+          targetZ += (dz / distance) * force;
+          targetY += force * 0.22;
+        }
+      }
+    }
+
+    mesh.position.x = lerp(mesh.position.x, targetX, 0.14);
+    mesh.position.z = lerp(mesh.position.z, targetZ, 0.14);
+    mesh.position.y = lerp(mesh.position.y, targetY, 0.09);
+
+    const nextScale = lerp(mesh.scale.x, targetScale, 0.18);
+    mesh.scale.setScalar(nextScale);
+    mesh.material.emissiveIntensity = 0.22 + (data.impactNorm * 0.22) + (data.glow * 0.85);
+    mesh.material.opacity = hoveredMesh && (index !== hoveredNodeIndex) ? 0.78 : 0.97;
+  });
+
+  terrainMeshes.forEach((mesh, index) => {
+    const pulse = 1 + (Math.sin((time * 0.48) + index) * 0.02);
+    mesh.scale.set(pulse, pulse, pulse);
+    mesh.material.opacity = mesh.userData.baseOpacity + ((Math.sin((time * 0.6) + index) + 1) * 0.008);
+  });
+
+  updateLandscapeLines(time);
+  renderer.render(scene, camera);
+}
+
+/* ─────────────────────────────────────────
+   EVENTS
+───────────────────────────────────────── */
+function syncPointer(localX, localY) {
+  pointerState.localX = localX;
+  pointerState.localY = localY;
+  pointerState.inside = localX >= 0 && localX <= wrapper.clientWidth && localY >= 0 && localY <= wrapper.clientHeight;
+  pointerState.ndcX = (localX / wrapper.clientWidth) * 2 - 1;
+  pointerState.ndcY = -(localY / wrapper.clientHeight) * 2 + 1;
+  mouse.x = pointerState.ndcX;
+  mouse.y = pointerState.ndcY;
+}
+
+function syncPointerFromMouse(event) {
+  const rect = canvas.getBoundingClientRect();
+  syncPointer(event.clientX - rect.left, event.clientY - rect.top);
+}
+
+function syncPointerFromTouch(touch) {
+  const rect = canvas.getBoundingClientRect();
+  syncPointer(touch.clientX - rect.left, touch.clientY - rect.top);
+}
+
+function clearPointerState() {
+  pointerState.inside = false;
+  hoveredNodeIndex = -1;
+  tooltip.classList.remove('visible');
+}
+
+function applyOrbitDelta(dx, dy) {
+  const yawDirection = invertYaw ? 1 : -1;
+  const pitchDirection = invertPitch ? -1 : 1;
+  targetSpherical.theta += dx * 0.008 * yawDirection;
+  targetSpherical.phi = clamp(targetSpherical.phi + (dy * 0.008 * pitchDirection), 0.34, 1.56);
+}
+
+function findNodeFromPointer() {
+  if (!pointerState.inside || !nodeMeshes.length) return -1;
+
+  raycaster.setFromCamera(mouse, camera);
+  const hits = raycaster.intersectObjects(nodeMeshes);
+  if (hits.length) return hits[0].object.userData.index;
+
+  let bestIndex = -1;
+  let bestDistance = HOVER_RADIUS_PX * HOVER_RADIUS_PX;
+
+  nodeMeshes.forEach((mesh, index) => {
+    tempProjection.copy(mesh.position).project(camera);
+    if ((tempProjection.z < -1) || (tempProjection.z > 1)) return;
+    const screenX = (tempProjection.x * 0.5 + 0.5) * wrapper.clientWidth;
+    const screenY = (-tempProjection.y * 0.5 + 0.5) * wrapper.clientHeight;
+    const dx = screenX - pointerState.localX;
+    const dy = screenY - pointerState.localY;
+    const distance = (dx * dx) + (dy * dy);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestIndex = index;
+    }
+  });
+
+  return bestIndex;
+}
+
+function updateHoverState() {
+  if (!isConnected || !pointerState.inside || !nodeMeshes.length) {
+    hoveredNodeIndex = -1;
+    tooltip.classList.remove('visible');
+    return;
+  }
+
+  hoveredNodeIndex = findNodeFromPointer();
+  if (hoveredNodeIndex < 0) {
+    tooltip.classList.remove('visible');
+    return;
+  }
+
+  const ctrl = nodeMeshes[hoveredNodeIndex].userData.ctrl;
+  const fill = document.getElementById('tt-bar');
+  document.getElementById('tt-group').textContent = ctrl.groupName;
+  document.getElementById('tt-name').textContent = ctrl.name;
+  document.getElementById('tt-score').textContent = `${ctrl.score}% score • ${ctrl.impact} impact`;
+  fill.style.width = `${ctrl.score}%`;
+  fill.style.background = GROUPS[ctrl.group].hex;
+
+  tooltip.style.left = `${Math.min(pointerState.localX + 16, wrapper.clientWidth - 220)}px`;
+  tooltip.style.top = `${clamp(pointerState.localY - 14, 14, wrapper.clientHeight - 72)}px`;
+  tooltip.classList.add('visible');
+}
+
+function setupEvents() {
+  canvas.addEventListener('mousedown', event => {
+    isDragging = true;
+    dragDistance = 0;
+    prevMouse = { x: event.clientX, y: event.clientY };
+    syncPointerFromMouse(event);
+  });
+
+  window.addEventListener('mouseup', () => {
+    isDragging = false;
+    lastTouch = null;
+  });
+
+  window.addEventListener('mousemove', event => {
+    syncPointerFromMouse(event);
+    if (!isDragging) return;
+    const dx = event.clientX - prevMouse.x;
+    const dy = event.clientY - prevMouse.y;
+    dragDistance += Math.abs(dx) + Math.abs(dy);
+    applyOrbitDelta(dx, dy);
+    prevMouse = { x: event.clientX, y: event.clientY };
+  });
+
+  canvas.addEventListener('mouseleave', clearPointerState);
+  window.addEventListener('blur', clearPointerState);
+
+  canvas.addEventListener('wheel', event => {
+    targetSpherical.radius = clamp(targetSpherical.radius + (event.deltaY * 0.08), 42, 180);
+    event.preventDefault();
+  }, { passive: false });
+
+  canvas.addEventListener('click', event => {
+    if (!isConnected) return;
+    syncPointerFromMouse(event);
+    const clickedNode = dragDistance > 6 ? -1 : findNodeFromPointer();
+    dragDistance = 0;
+    if (clickedNode >= 0) openControlModal(nodeMeshes[clickedNode].userData.ctrl);
+  });
+
+  window.addEventListener('resize', () => {
+    const w = wrapper.clientWidth;
+    const h = wrapper.clientHeight;
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    renderer.setSize(w, h);
+  });
+
+  canvas.addEventListener('touchstart', event => {
+    if (!event.touches.length) return;
+    lastTouch = event.touches[0];
+    tapCandidate = true;
+    syncPointerFromTouch(lastTouch);
+  }, { passive: true });
+
+  canvas.addEventListener('touchmove', event => {
+    if (!lastTouch || !event.touches.length) return;
+    const touch = event.touches[0];
+    const dx = touch.clientX - lastTouch.clientX;
+    const dy = touch.clientY - lastTouch.clientY;
+    if ((Math.abs(dx) + Math.abs(dy)) > 3) tapCandidate = false;
+    applyOrbitDelta(dx, dy);
+    lastTouch = touch;
+    syncPointerFromTouch(touch);
+    event.preventDefault();
+  }, { passive: false });
+
+  canvas.addEventListener('touchend', () => {
+    if (tapCandidate && isConnected && hoveredNodeIndex >= 0) {
+      openControlModal(nodeMeshes[hoveredNodeIndex].userData.ctrl);
+    }
+    lastTouch = null;
+    tapCandidate = false;
+  });
+}
+
+/* ─────────────────────────────────────────
+   VIEWPORT CONTROLS
+───────────────────────────────────────── */
+function resetCamera() {
+  targetSpherical = { ...CAMERA_DEFAULT };
+}
+
+function setView(mode) {
+  flat = (mode === 'flat');
+  nodeMeshes.forEach(mesh => {
+    mesh.userData.heightTarget = flat ? 0 : mesh.userData.peakHeight;
+  });
+  document.getElementById('btn-flat').classList.toggle('active', flat);
+  document.getElementById('btn-3d').classList.toggle('active', !flat);
+}
+
+function toggleAutoRotate() {
+  autoRotate = !autoRotate;
+  document.getElementById('btn-rotate').classList.toggle('active', autoRotate);
+}
+
+function toggleInvertAxis(axis) {
+  if (axis === 'yaw') {
+    invertYaw = !invertYaw;
+    document.getElementById('btn-invert-yaw').classList.toggle('active', invertYaw);
+    return;
+  }
+  invertPitch = !invertPitch;
+  document.getElementById('btn-invert-pitch').classList.toggle('active', invertPitch);
+}
+
+function toggleGroup(pill) {
+  const groupKey = pill.dataset.group;
+  if (activeGroups.has(groupKey)) {
+    activeGroups.delete(groupKey);
+    pill.classList.remove('active');
+  } else {
+    activeGroups.add(groupKey);
+    pill.classList.add('active');
+  }
+  buildNodes();
+}
+
+/* ─────────────────────────────────────────
+   STATS
+───────────────────────────────────────── */
+function updateStats(visible) {
+  const compliant = visible.filter(c => c.score >= 80).length;
+  const partial   = visible.filter(c => c.score >= 40 && c.score < 80).length;
+  const failed    = visible.filter(c => c.score < 40).length;
+  const score     = visible.length ? Math.round(visible.reduce((a,c) => a+c.score, 0) / visible.length) : 0;
+
+  animCount('stat-compliant', compliant);
+  animCount('stat-partial', partial);
+  animCount('stat-failed', failed);
+  animCount('stat-total', visible.length);
+
+  // Score ring
+  document.getElementById('score-val').textContent = score + '%';
+  const circ = 2 * Math.PI * 18;
+  document.getElementById('score-arc').setAttribute('stroke-dasharray', `${(score/100)*circ} ${circ}`);
+}
+
+function animCount(id, target) {
+  const el = document.getElementById(id);
+  const start = parseInt(el.textContent) || 0;
+  let frame = 0;
+  const dur = 40;
+  const tick = () => {
+    frame++;
+    el.textContent = Math.round(start + (target - start) * (frame / dur));
+    if (frame < dur) requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+
+/* ─────────────────────────────────────────
+   MODALS
+───────────────────────────────────────── */
+function openControlModal(ctrl) {
+  const g = GROUPS[ctrl.group];
+  const badge = document.getElementById('modal-badge');
+  badge.textContent = ctrl.groupName;
+  badge.style.background = g.hex + '22';
+  badge.style.color = g.hex;
+  badge.style.borderColor = g.hex + '66';
+  badge.style.border = '1px solid';
+  document.getElementById('modal-ctrl-id').textContent = ctrl.id;
+  document.getElementById('modal-ctrl-title').textContent = ctrl.name;
+  document.getElementById('modal-ctrl-desc').textContent = ctrl.desc;
+  document.getElementById('modal-score-fill').style.width = ctrl.score + '%';
+  document.getElementById('modal-score-fill').style.background = ctrl.score >= 80 ? 'var(--green)' : ctrl.score >= 40 ? 'var(--amber)' : 'var(--red)';
+  document.getElementById('modal-score-val').textContent = ctrl.score;
+
+  const list = document.getElementById('modal-controls-list');
+  list.innerHTML = ctrl.subControls.map(sc => `
+    <div class="control-row">
+      <div class="control-info">
+        <div class="control-name">${sc.name}</div>
+        <div class="control-sub">${ctrl.id} · ${ctrl.groupName}</div>
+      </div>
+      <div class="toggle-wrap">
+        <div class="toggle-label">${sc.state.toUpperCase()}</div>
+        <div class="sw-toggle ${sc.state === 'on' ? 'on' : sc.state === 'report' ? 'report' : ''}" onclick="cycleToggle(this)">
+          <div class="sw-thumb"></div>
+        </div>
+        <div class="mode-btns">
+          <button class="mode-btn ${sc.state==='on'?'active-on':''}" onclick="setMode(this,'on')">ON</button>
+          <button class="mode-btn ${sc.state==='report'?'active-report':''}" onclick="setMode(this,'report')">REPORT</button>
+          <button class="mode-btn ${sc.state==='off'?'active-off':''}" onclick="setMode(this,'off')">OFF</button>
+        </div>
+      </div>
+    </div>
+  `).join('');
+
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+function cycleToggle(el) {
+  const states = ['','report','on'];
+  const cur = el.classList.contains('on') ? 'on' : el.classList.contains('report') ? 'report' : 'off';
+  const next = cur === 'off' ? 'report' : cur === 'report' ? 'on' : 'off';
+  el.classList.remove('on','report');
+  if (next !== 'off') el.classList.add(next);
+  el.previousElementSibling.textContent = next.toUpperCase();
+  const btns = el.nextElementSibling.querySelectorAll('.mode-btn');
+  btns.forEach(b => b.className = 'mode-btn');
+  if (next === 'on') btns[0].classList.add('active-on');
+  else if (next === 'report') btns[1].classList.add('active-report');
+  else btns[2].classList.add('active-off');
+}
+
+function setMode(btn, mode) {
+  const wrap = btn.closest('.toggle-wrap');
+  const toggle = wrap.querySelector('.sw-toggle');
+  const label  = wrap.querySelector('.toggle-label');
+  toggle.classList.remove('on','report');
+  if (mode !== 'off') toggle.classList.add(mode);
+  label.textContent = mode.toUpperCase();
+  wrap.querySelectorAll('.mode-btn').forEach(b => b.className = 'mode-btn');
+  btn.classList.add(mode === 'on' ? 'active-on' : mode === 'report' ? 'active-report' : 'active-off');
+}
+
+function closeModal(e) {
+  if (e.target.id === 'modal-overlay') document.getElementById('modal-overlay').classList.remove('open');
+}
+
+function openConnectModal() {
+  document.getElementById('connect-modal-overlay').classList.add('open');
+}
+function closeConnectModal(e) {
+  if (e.target.id === 'connect-modal-overlay') document.getElementById('connect-modal-overlay').classList.remove('open');
+}
+
+/* ─────────────────────────────────────────
+   SIMULATE CONNECT + LOAD
+───────────────────────────────────────── */
+function simulateConnect() {
+  const tenant = document.getElementById('inp-tenant').value.trim() || 'demo.onmicrosoft.com';
+  const clientId = document.getElementById('inp-client').value.trim();
+  const secretId = document.getElementById('inp-secret-id').value.trim();
+  const secretValue = document.getElementById('inp-secret-value').value.trim();
+  document.getElementById('connect-modal-overlay').classList.remove('open');
+
+  // Show loading overlay
+  const overlay = document.getElementById('loading-overlay');
+  const bar = document.getElementById('loading-bar');
+  const msg = document.getElementById('loading-msg');
+  overlay.classList.remove('hidden');
+
+  const msgs = [
+    'Authenticating with Azure app credentials…',
+    clientId ? `Resolving app ${clientId.slice(0, 8)}…` : 'Resolving app registration…',
+    secretId ? `Using secret reference ${secretId.slice(0, 8)}…` : 'Validating active client secret…',
+    secretValue ? 'Requesting app-only token from Microsoft Entra…' : 'Requesting app-only token from Microsoft Entra…',
+    'Fetching security controls from Microsoft Graph…',
+    'Loading Defender for Endpoint policies…',
+    'Fetching Intune compliance baselines…',
+    'Pulling Entra ID configurations…',
+    'Loading Exchange Online protections…',
+    'Fetching Teams & SharePoint policies…',
+    'Building control topology…',
+    'Rendering security landscape…'
+  ];
+
+  let step = 0;
+  const interval = setInterval(() => {
+    step++;
+    const pct = Math.min((step / msgs.length) * 100, 100);
+    bar.style.width = pct + '%';
+    msg.textContent = msgs[Math.min(step, msgs.length - 1)];
+    if (step >= msgs.length) {
+      clearInterval(interval);
+      setTimeout(() => {
+        overlay.classList.add('hidden');
+        isConnected = true;
+        document.getElementById('tenant-name').textContent = tenant;
+        document.getElementById('tenant-status').querySelector('.status-dot').style.cssText = '';
+        document.getElementById('status-text').textContent = 'Connected · ' + new Date().toLocaleTimeString();
+        document.getElementById('sb-tenant').textContent = tenant;
+        generateControls();
+        buildNodes();
+      }, 400);
+    }
+  }, 400);
+}
+
+/* ─────────────────────────────────────────
+   SIDEBAR & THEME
+───────────────────────────────────────── */
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('collapsed');
+}
+function toggleDropdown(id) {
+  document.getElementById(id).classList.toggle('open');
+}
+document.getElementById('theme-toggle').addEventListener('click', () => {
+  const html = document.documentElement;
+  const isDark = html.dataset.theme === 'dark';
+  html.dataset.theme = isDark ? 'light' : 'dark';
+  document.getElementById('theme-label').textContent = isDark ? 'Dark Mode' : 'Light Mode';
+
+  // Update fog color
+  if (scene) scene.fog.color.setHex(isDark ? 0xf0f4fa : 0x0a0c10);
+  if (renderer) renderer.setClearColor(isDark ? 0xf0f4fa : 0x000000, 0);
+});
+
+/* ─────────────────────────────────────────
+   BOOT
+───────────────────────────────────────── */
+window.addEventListener('DOMContentLoaded', () => {
+  initThree();
+  // Fade loading after engine init
+  const bar = document.getElementById('loading-bar');
+  const msg = document.getElementById('loading-msg');
+  bar.style.width = '100%';
+  msg.textContent = 'Engine ready — Connect your tenant to load controls.';
+  setTimeout(() => {
+    document.getElementById('loading-overlay').classList.add('hidden');
+  }, 1200);
+});
+</script>
+</body>
+</html>

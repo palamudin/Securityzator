@@ -18,6 +18,8 @@ public sealed class FileBackedRemediationJobService : IRemediationJobService
     private const string EntraIdentityHygieneTemplateName = "Entra admin and consent hygiene";
     private const string EntraDailyUseHardeningTemplateKey = "entra-daily-use-hardening";
     private const string EntraDailyUseHardeningTemplateName = "Entra daily-use consent and password hardening";
+    private const string EntraLowImpactAppConsentTemplateKey = "entra-low-impact-app-consent";
+    private const string EntraLowImpactAppConsentTemplateName = "Entra low-impact app consent";
     private const string RequireMfaGuestAccessTemplateKey = "require-mfa-guest-access";
     private const string RequireMfaGuestAccessTemplateName = "Require MFA for guest access";
     private const string RequireMfaAdminPortalsTemplateKey = "require-mfa-admin-portals";
@@ -34,6 +36,8 @@ public sealed class FileBackedRemediationJobService : IRemediationJobService
     private const string RequirePhishingResistantMfaAdminsTemplateName = "Require phishing-resistant MFA for privileged admins";
     private const string MdoAntiPhishingAndImpersonationTemplateKey = "mdo-anti-phishing-and-impersonation";
     private const string MdoAntiPhishingAndImpersonationTemplateName = "Defender for Office anti-phishing and impersonation";
+    private const string MdoAntiMalwareTemplateKey = "mdo-anti-malware-baseline";
+    private const string MdoAntiMalwareTemplateName = "Defender for Office anti-malware hardening";
     private const string MdoSafeLinksAndAttachmentsTemplateKey = "mdo-safe-links-and-attachments";
     private const string MdoSafeLinksAndAttachmentsTemplateName = "Defender for Office Safe Links and attachments";
     private const string MdoSpamAndForwardingTemplateKey = "mdo-spam-and-forwarding-baseline";
@@ -89,7 +93,8 @@ public sealed class FileBackedRemediationJobService : IRemediationJobService
             request.ExcludeGroupId,
             request.TemplateKey,
             templateName,
-            cancellationToken);
+            cancellationToken,
+            request.AllUsersAssignment);
     }
 
     public Task<RemediationJobRecord> EnqueueBlockLegacyAuthenticationAsync(
@@ -175,7 +180,8 @@ public sealed class FileBackedRemediationJobService : IRemediationJobService
         string? excludeGroupId,
         string templateKey,
         string templateName,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool allUsersAssignment = false)
     {
         return _stateStore.WriteAsync(state =>
         {
@@ -209,6 +215,7 @@ public sealed class FileBackedRemediationJobService : IRemediationJobService
                 ExcludeGroupId = string.IsNullOrWhiteSpace(excludeGroupId)
                     ? null
                     : excludeGroupId.Trim(),
+                AllUsersAssignment = allUsersAssignment,
                 Logs =
                 [
                     $"Queued '{templateName}' by {requestedByOperatorName.Trim()} at {createdUtc:O}.",
@@ -275,6 +282,7 @@ public sealed class FileBackedRemediationJobService : IRemediationJobService
                 job.ConnectionDisplayName,
                 job.IncludeGroupId,
                 job.ExcludeGroupId,
+                job.AllUsersAssignment,
                 job.AttemptCount,
                 job.MaxAttempts);
         }, cancellationToken);
@@ -369,6 +377,7 @@ public sealed class FileBackedRemediationJobService : IRemediationJobService
             job.NextAttemptUtc,
             job.IncludeGroupId,
             job.ExcludeGroupId,
+            job.AllUsersAssignment,
             job.PolicyId,
             job.PolicyState,
             job.RemediationRunId,
@@ -397,6 +406,7 @@ public sealed class FileBackedRemediationJobService : IRemediationJobService
             EntraRiskPoliciesTemplateKey => EntraRiskPoliciesTemplateName,
             EntraIdentityHygieneTemplateKey => EntraIdentityHygieneTemplateName,
             EntraDailyUseHardeningTemplateKey => EntraDailyUseHardeningTemplateName,
+            EntraLowImpactAppConsentTemplateKey => EntraLowImpactAppConsentTemplateName,
             RequireMfaGuestAccessTemplateKey => RequireMfaGuestAccessTemplateName,
             RequireMfaAdminPortalsTemplateKey => RequireMfaAdminPortalsTemplateName,
             RequireMfaAzureManagementTemplateKey => RequireMfaAzureManagementTemplateName,
@@ -405,6 +415,7 @@ public sealed class FileBackedRemediationJobService : IRemediationJobService
             RequirePasswordChangeHighRiskUsersTemplateKey => RequirePasswordChangeHighRiskUsersTemplateName,
             RequirePhishingResistantMfaAdminsTemplateKey => RequirePhishingResistantMfaAdminsTemplateName,
             MdoAntiPhishingAndImpersonationTemplateKey => MdoAntiPhishingAndImpersonationTemplateName,
+            MdoAntiMalwareTemplateKey => MdoAntiMalwareTemplateName,
             MdoSafeLinksAndAttachmentsTemplateKey => MdoSafeLinksAndAttachmentsTemplateName,
             MdoSpamAndForwardingTemplateKey => MdoSpamAndForwardingTemplateName,
             ExchangeOnlineCollaborationMailboxTemplateKey => ExchangeOnlineCollaborationMailboxTemplateName,

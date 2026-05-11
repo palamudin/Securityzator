@@ -79,7 +79,8 @@ public class Worker : BackgroundService
                             claimedJob.LaunchMode,
                             claimedJob.TemplateKey,
                             claimedJob.IncludeGroupId,
-                            claimedJob.ExcludeGroupId),
+                            claimedJob.ExcludeGroupId,
+                            claimedJob.AllUsersAssignment),
                         stoppingToken);
 
                     if (outcome.Succeeded)

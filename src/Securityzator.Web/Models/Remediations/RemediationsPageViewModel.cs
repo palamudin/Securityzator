@@ -71,6 +71,9 @@ public sealed class RemediationsPageViewModel
     [Display(Name = "Approval justification")]
     public string ApprovalJustification { get; set; } = string.Empty;
 
+    [Display(Name = "Apply to all users / all devices")]
+    public bool AllUsersAssignment { get; set; }
+
     [Display(Name = "Report-only confirmed")]
     public bool ConfirmReportOnly { get; set; }
 
@@ -93,7 +96,10 @@ public sealed class RemediationsPageViewModel
     public bool HasSourceRecommendation => SourceRecommendation is not null;
 
     [ValidateNever]
-    public bool RequiresIncludeGroup => SelectedTemplate.Targeting.SupportsIncludeGroupSelection;
+    public bool RequiresIncludeGroup => SelectedTemplate.Targeting.SupportsIncludeGroupSelection && !AllUsersAssignment;
+
+    [ValidateNever]
+    public bool SupportsAllUsersAssignment => SelectedTemplate.Targeting.SupportsAllUsersAssignment;
 
     [ValidateNever]
     public bool SupportsExcludeGroup => SelectedTemplate.Targeting.SupportsExcludeGroupSelection;

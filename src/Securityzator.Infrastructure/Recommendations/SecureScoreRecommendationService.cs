@@ -635,6 +635,11 @@ public sealed class SecureScoreRecommendationService : IRecommendationService
             return "mdo-anti-phishing-and-impersonation";
         }
 
+        if (IsDefenderForOfficeAntiMalware(normalizedTitle))
+        {
+            return "mdo-anti-malware-baseline";
+        }
+
         if (IsDefenderForOfficeSafeLinksAndAttachments(normalizedTitle))
         {
             return "mdo-safe-links-and-attachments";
@@ -878,9 +883,15 @@ public sealed class SecureScoreRecommendationService : IRecommendationService
         return normalizedTitle.Contains("SAFE LINKS", StringComparison.Ordinal)
                || normalizedTitle.Contains("SAFE ATTACHMENTS", StringComparison.Ordinal)
                || normalizedTitle.Contains("SAFE DOCUMENTS", StringComparison.Ordinal)
-               || normalizedTitle.Contains("COMMON ATTACHMENT TYPES FILTER", StringComparison.Ordinal)
-               || normalizedTitle.Contains("DEFENDER FOR OFFICE 365 IN SHAREPOINT, ONEDRIVE, AND MICROSOFT TEAMS", StringComparison.Ordinal)
-               || normalizedTitle.Contains("ZERO-HOUR AUTO PURGE POLICIES FOR MALWARE", StringComparison.Ordinal);
+               || normalizedTitle.Contains("DEFENDER FOR OFFICE 365 IN SHAREPOINT, ONEDRIVE, AND MICROSOFT TEAMS", StringComparison.Ordinal);
+    }
+
+    private static bool IsDefenderForOfficeAntiMalware(string normalizedTitle)
+    {
+        return normalizedTitle.Contains("COMMON ATTACHMENT TYPES FILTER", StringComparison.Ordinal)
+               || normalizedTitle.Contains("ZERO-HOUR AUTO PURGE POLICIES FOR MALWARE", StringComparison.Ordinal)
+               || normalizedTitle.Contains("ANTI-MALWARE", StringComparison.Ordinal)
+               || normalizedTitle.Contains("MALWARE FILTER", StringComparison.Ordinal);
     }
 
     private static bool IsDefenderForOfficeSpamAndForwarding(string normalizedTitle)

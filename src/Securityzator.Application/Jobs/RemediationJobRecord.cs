@@ -21,6 +21,7 @@ public sealed record RemediationJobRecord(
     DateTimeOffset? NextAttemptUtc,
     string IncludeGroupId,
     string? ExcludeGroupId,
+    bool AllUsersAssignment,
     string? PolicyId,
     string? PolicyState,
     Guid? RemediationRunId,

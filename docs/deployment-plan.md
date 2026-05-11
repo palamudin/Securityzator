@@ -5,6 +5,11 @@ Last reviewed: `2026-04-13`
 ## Goal
 Move Securityzator from a strong local/self-hosted operator tool into a client-facing enterprise service that can onboard a tenant through browser-based admin consent, align prerequisites, and then run mostly app-only automation per customer.
 
+Related enterprise-risk reference:
+- `docs/compliance.md`
+- `docs/runbooks/pre-ad-checklist.md`
+- `docs/runbooks/remote-defender-enablement-roadmap.md`
+
 ## Deployment modes
 
 ### Mode 1. Local or managed operator bootstrap
@@ -107,6 +112,9 @@ Hosted best-practice target:
 - start with assessment-first and report-only slices where supported
 - use pilot groups for endpoint and risky tenant-wide changes
 - keep justifications, approvals, and logs on every launch
+- use the tenant shakedown harness and golden guide as the formal deployment gate before broader rollout:
+  - `docs/runbooks/tenant-shakedown.md`
+  - `docs/runbooks/tenant-shakedown-golden-guide.md`
 
 ### Phase 6. Broad rollout
 - expand from pilot to approved production scope
@@ -147,6 +155,9 @@ Fallback flow:
 - local certificate-store dependency for some workload providers
 - Azure CLI and `Auth.txt`-style bootstrap assumptions still present in the operator flow
 - some workloads still need delegated exception handling rather than pure app-only execution
+
+See also:
+- `docs/compliance.md` for the fuller current-vs-target data traversal and enterprise compliance posture.
 
 ## Production definition of done
 

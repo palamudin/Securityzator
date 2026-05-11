@@ -65,6 +65,8 @@ public sealed class IntuneEndpointAutomationClient
     private const string ApplyUacRestrictionsToLocalAccountsOnNetworkLogonOmaUri =
         "./Device/Vendor/MSFT/Policy/Config/MSSecurityGuide/ApplyUACRestrictionsToLocalAccountsOnNetworkLogon";
     private const string AlwaysInstallElevatedOmaUri =
+        "./Device/Vendor/MSFT/Policy/Config/ApplicationManagement/MSIAlwaysInstallWithElevatedPrivileges";
+    private const string LegacyAlwaysInstallElevatedOmaUri =
         "./Device/Vendor/MSFT/Policy/Config/ApplicationManagement/AlwaysInstallElevated";
     private const string WDigestAuthenticationOmaUri =
         "./Device/Vendor/MSFT/Policy/Config/MSSecurityGuide/WDigestAuthentication";
@@ -141,9 +143,10 @@ public sealed class IntuneEndpointAutomationClient
         string accessToken,
         string includeGroupId,
         string? excludeGroupId,
+        bool allUsersAssignment = false,
         CancellationToken cancellationToken = default)
     {
-        ValidatePilotAssignment(includeGroupId, excludeGroupId, "Endpoint core protection");
+        ValidatePilotAssignment(includeGroupId, excludeGroupId, allUsersAssignment, "Endpoint core protection");
 
         var desiredSnapshot = CreateDesiredCoreProtectionSnapshot();
         var desiredHardeningSnapshot = CreateDesiredCoreProtectionHardeningSnapshot();
@@ -261,20 +264,20 @@ public sealed class IntuneEndpointAutomationClient
         }
 
         var currentAssignments = await ListAssignmentsAsync(configurationId, accessToken, graphRoles, cancellationToken);
-        var assignmentsAlreadyAligned = AreAssignmentsAligned(currentAssignments, includeGroupId, excludeGroupId);
+        var assignmentsAlreadyAligned = AreAssignmentsAligned(currentAssignments, includeGroupId, excludeGroupId, allUsersAssignment);
 
         if (!assignmentsAlreadyAligned)
         {
-            await AssignConfigurationAsync(configurationId, includeGroupId, excludeGroupId, accessToken, graphRoles, cancellationToken);
+            await AssignConfigurationAsync(configurationId, includeGroupId, excludeGroupId, accessToken, graphRoles, cancellationToken, allUsersAssignment);
             updatedAssignments = true;
         }
 
         var currentHardeningAssignments = await ListAssignmentsAsync(hardeningConfigurationId, accessToken, graphRoles, cancellationToken);
-        var hardeningAssignmentsAlreadyAligned = AreAssignmentsAligned(currentHardeningAssignments, includeGroupId, excludeGroupId);
+        var hardeningAssignmentsAlreadyAligned = AreAssignmentsAligned(currentHardeningAssignments, includeGroupId, excludeGroupId, allUsersAssignment);
 
         if (!hardeningAssignmentsAlreadyAligned)
         {
-            await AssignConfigurationAsync(hardeningConfigurationId, includeGroupId, excludeGroupId, accessToken, graphRoles, cancellationToken);
+            await AssignConfigurationAsync(hardeningConfigurationId, includeGroupId, excludeGroupId, accessToken, graphRoles, cancellationToken, allUsersAssignment);
             updatedHardeningAssignments = true;
         }
 
@@ -293,7 +296,7 @@ public sealed class IntuneEndpointAutomationClient
                 "Intune readback did not match the Securityzator core protection baseline after the configuration update.");
         }
 
-        if (!AreAssignmentsAligned(finalAssignments, includeGroupId, excludeGroupId))
+        if (!AreAssignmentsAligned(finalAssignments, includeGroupId, excludeGroupId, allUsersAssignment))
         {
             throw new InvalidOperationException(
                 "Intune readback did not match the requested include or exclusion group assignment after the baseline update.");
@@ -305,7 +308,7 @@ public sealed class IntuneEndpointAutomationClient
                 "Intune readback did not match the Securityzator core protection hardening baseline after the configuration update.");
         }
 
-        if (!AreAssignmentsAligned(finalHardeningAssignments, includeGroupId, excludeGroupId))
+        if (!AreAssignmentsAligned(finalHardeningAssignments, includeGroupId, excludeGroupId, allUsersAssignment))
         {
             throw new InvalidOperationException(
                 "Intune readback did not match the requested include or exclusion group assignment after the core protection hardening update.");
@@ -339,9 +342,10 @@ public sealed class IntuneEndpointAutomationClient
         string accessToken,
         string includeGroupId,
         string? excludeGroupId,
+        bool allUsersAssignment = false,
         CancellationToken cancellationToken = default)
     {
-        ValidatePilotAssignment(includeGroupId, excludeGroupId, "Endpoint firewall and SmartScreen");
+        ValidatePilotAssignment(includeGroupId, excludeGroupId, allUsersAssignment, "Endpoint firewall and SmartScreen");
 
         var desiredSnapshot = CreateDesiredFirewallAndSmartScreenSnapshot();
         var graphRoles = ParseGraphRoles(accessToken);
@@ -457,20 +461,20 @@ public sealed class IntuneEndpointAutomationClient
         }
 
         var currentAssignments = await ListAssignmentsAsync(configurationId, accessToken, graphRoles, cancellationToken);
-        var assignmentsAlreadyAligned = AreAssignmentsAligned(currentAssignments, includeGroupId, excludeGroupId);
+        var assignmentsAlreadyAligned = AreAssignmentsAligned(currentAssignments, includeGroupId, excludeGroupId, allUsersAssignment);
 
         if (!assignmentsAlreadyAligned)
         {
-            await AssignConfigurationAsync(configurationId, includeGroupId, excludeGroupId, accessToken, graphRoles, cancellationToken);
+            await AssignConfigurationAsync(configurationId, includeGroupId, excludeGroupId, accessToken, graphRoles, cancellationToken, allUsersAssignment);
             updatedMainAssignments = true;
         }
 
         var currentEdgeAssignments = await ListGroupPolicyAssignmentsAsync(edgeConfigurationId, accessToken, graphRoles, cancellationToken);
-        var edgeAssignmentsAlreadyAligned = AreAssignmentsAligned(currentEdgeAssignments, includeGroupId, excludeGroupId);
+        var edgeAssignmentsAlreadyAligned = AreAssignmentsAligned(currentEdgeAssignments, includeGroupId, excludeGroupId, allUsersAssignment);
 
         if (!edgeAssignmentsAlreadyAligned)
         {
-            await AssignGroupPolicyConfigurationAsync(edgeConfigurationId, includeGroupId, excludeGroupId, accessToken, graphRoles, cancellationToken);
+            await AssignGroupPolicyConfigurationAsync(edgeConfigurationId, includeGroupId, excludeGroupId, accessToken, graphRoles, cancellationToken, allUsersAssignment);
             updatedEdgeAssignments = true;
         }
 
@@ -493,7 +497,7 @@ public sealed class IntuneEndpointAutomationClient
                 "Intune readback did not match the Securityzator firewall and SmartScreen baseline after the configuration update.");
         }
 
-        if (!AreAssignmentsAligned(finalAssignments, includeGroupId, excludeGroupId))
+        if (!AreAssignmentsAligned(finalAssignments, includeGroupId, excludeGroupId, allUsersAssignment))
         {
             throw new InvalidOperationException(
                 "Intune readback did not match the requested include or exclusion group assignment after the baseline update.");
@@ -505,7 +509,7 @@ public sealed class IntuneEndpointAutomationClient
                 "Intune readback did not match the Securityzator Edge SmartScreen companion baseline after the configuration update.");
         }
 
-        if (!AreAssignmentsAligned(finalEdgeAssignments, includeGroupId, excludeGroupId))
+        if (!AreAssignmentsAligned(finalEdgeAssignments, includeGroupId, excludeGroupId, allUsersAssignment))
         {
             throw new InvalidOperationException(
                 "Intune readback did not match the requested include or exclusion group assignment after the Edge SmartScreen update.");
@@ -537,9 +541,10 @@ public sealed class IntuneEndpointAutomationClient
         string accessToken,
         string includeGroupId,
         string? excludeGroupId,
+        bool allUsersAssignment = false,
         CancellationToken cancellationToken = default)
     {
-        ValidatePilotAssignment(includeGroupId, excludeGroupId, "Endpoint exploit protection");
+        ValidatePilotAssignment(includeGroupId, excludeGroupId, allUsersAssignment, "Endpoint exploit protection");
 
         var desiredSnapshot = CreateDesiredExploitProtectionSnapshot();
         var graphRoles = ParseGraphRoles(accessToken);
@@ -603,11 +608,11 @@ public sealed class IntuneEndpointAutomationClient
         }
 
         var currentAssignments = await ListAssignmentsAsync(configurationId, accessToken, graphRoles, cancellationToken);
-        var assignmentsAlreadyAligned = AreAssignmentsAligned(currentAssignments, includeGroupId, excludeGroupId);
+        var assignmentsAlreadyAligned = AreAssignmentsAligned(currentAssignments, includeGroupId, excludeGroupId, allUsersAssignment);
 
         if (!assignmentsAlreadyAligned)
         {
-            await AssignConfigurationAsync(configurationId, includeGroupId, excludeGroupId, accessToken, graphRoles, cancellationToken);
+            await AssignConfigurationAsync(configurationId, includeGroupId, excludeGroupId, accessToken, graphRoles, cancellationToken, allUsersAssignment);
             updatedAssignments = true;
         }
 
@@ -624,7 +629,7 @@ public sealed class IntuneEndpointAutomationClient
                 "Intune readback did not match the Securityzator exploit protection baseline after the configuration update.");
         }
 
-        if (!AreAssignmentsAligned(finalAssignments, includeGroupId, excludeGroupId))
+        if (!AreAssignmentsAligned(finalAssignments, includeGroupId, excludeGroupId, allUsersAssignment))
         {
             throw new InvalidOperationException(
                 "Intune readback did not match the requested include or exclusion group assignment after the exploit protection baseline update.");
@@ -649,9 +654,10 @@ public sealed class IntuneEndpointAutomationClient
         string accessToken,
         string includeGroupId,
         string? excludeGroupId,
+        bool allUsersAssignment = false,
         CancellationToken cancellationToken = default)
     {
-        ValidatePilotAssignment(includeGroupId, excludeGroupId, "Endpoint BitLocker");
+        ValidatePilotAssignment(includeGroupId, excludeGroupId, allUsersAssignment, "Endpoint BitLocker");
 
         var desiredSnapshot = CreateDesiredBitLockerSnapshot();
         var graphRoles = ParseGraphRoles(accessToken);
@@ -715,11 +721,11 @@ public sealed class IntuneEndpointAutomationClient
         }
 
         var currentAssignments = await ListAssignmentsAsync(configurationId, accessToken, graphRoles, cancellationToken);
-        var assignmentsAlreadyAligned = AreAssignmentsAligned(currentAssignments, includeGroupId, excludeGroupId);
+        var assignmentsAlreadyAligned = AreAssignmentsAligned(currentAssignments, includeGroupId, excludeGroupId, allUsersAssignment);
 
         if (!assignmentsAlreadyAligned)
         {
-            await AssignConfigurationAsync(configurationId, includeGroupId, excludeGroupId, accessToken, graphRoles, cancellationToken);
+            await AssignConfigurationAsync(configurationId, includeGroupId, excludeGroupId, accessToken, graphRoles, cancellationToken, allUsersAssignment);
             updatedAssignments = true;
         }
 
@@ -736,7 +742,7 @@ public sealed class IntuneEndpointAutomationClient
                 "Intune readback did not match the Securityzator BitLocker baseline after the configuration update.");
         }
 
-        if (!AreAssignmentsAligned(finalAssignments, includeGroupId, excludeGroupId))
+        if (!AreAssignmentsAligned(finalAssignments, includeGroupId, excludeGroupId, allUsersAssignment))
         {
             throw new InvalidOperationException(
                 "Intune readback did not match the requested include or exclusion group assignment after the baseline update.");
@@ -761,9 +767,10 @@ public sealed class IntuneEndpointAutomationClient
         string accessToken,
         string includeGroupId,
         string? excludeGroupId,
+        bool allUsersAssignment = false,
         CancellationToken cancellationToken = default)
     {
-        ValidatePilotAssignment(includeGroupId, excludeGroupId, "Endpoint credential and elevation hardening");
+        ValidatePilotAssignment(includeGroupId, excludeGroupId, allUsersAssignment, "Endpoint credential and elevation hardening");
 
         var desiredSnapshot = CreateDesiredCredentialAndElevationHardeningSnapshot();
         var graphRoles = ParseGraphRoles(accessToken);
@@ -827,11 +834,11 @@ public sealed class IntuneEndpointAutomationClient
         }
 
         var currentAssignments = await ListAssignmentsAsync(configurationId, accessToken, graphRoles, cancellationToken);
-        var assignmentsAlreadyAligned = AreAssignmentsAligned(currentAssignments, includeGroupId, excludeGroupId);
+        var assignmentsAlreadyAligned = AreAssignmentsAligned(currentAssignments, includeGroupId, excludeGroupId, allUsersAssignment);
 
         if (!assignmentsAlreadyAligned)
         {
-            await AssignConfigurationAsync(configurationId, includeGroupId, excludeGroupId, accessToken, graphRoles, cancellationToken);
+            await AssignConfigurationAsync(configurationId, includeGroupId, excludeGroupId, accessToken, graphRoles, cancellationToken, allUsersAssignment);
             updatedAssignments = true;
         }
 
@@ -848,7 +855,7 @@ public sealed class IntuneEndpointAutomationClient
                 "Intune readback did not match the Securityzator credential and elevation hardening baseline after the configuration update.");
         }
 
-        if (!AreAssignmentsAligned(finalAssignments, includeGroupId, excludeGroupId))
+        if (!AreAssignmentsAligned(finalAssignments, includeGroupId, excludeGroupId, allUsersAssignment))
         {
             throw new InvalidOperationException(
                 "Intune readback did not match the requested include or exclusion group assignment after the baseline update.");
@@ -873,9 +880,10 @@ public sealed class IntuneEndpointAutomationClient
         string accessToken,
         string includeGroupId,
         string? excludeGroupId,
+        bool allUsersAssignment = false,
         CancellationToken cancellationToken = default)
     {
-        ValidatePilotAssignment(includeGroupId, excludeGroupId, "Endpoint remote access and network hardening");
+        ValidatePilotAssignment(includeGroupId, excludeGroupId, allUsersAssignment, "Endpoint remote access and network hardening");
 
         var desiredSnapshot = CreateDesiredRemoteAccessAndNetworkHardeningSnapshot();
         var graphRoles = ParseGraphRoles(accessToken);
@@ -939,11 +947,11 @@ public sealed class IntuneEndpointAutomationClient
         }
 
         var currentAssignments = await ListAssignmentsAsync(configurationId, accessToken, graphRoles, cancellationToken);
-        var assignmentsAlreadyAligned = AreAssignmentsAligned(currentAssignments, includeGroupId, excludeGroupId);
+        var assignmentsAlreadyAligned = AreAssignmentsAligned(currentAssignments, includeGroupId, excludeGroupId, allUsersAssignment);
 
         if (!assignmentsAlreadyAligned)
         {
-            await AssignConfigurationAsync(configurationId, includeGroupId, excludeGroupId, accessToken, graphRoles, cancellationToken);
+            await AssignConfigurationAsync(configurationId, includeGroupId, excludeGroupId, accessToken, graphRoles, cancellationToken, allUsersAssignment);
             updatedAssignments = true;
         }
 
@@ -960,7 +968,7 @@ public sealed class IntuneEndpointAutomationClient
                 "Intune readback did not match the Securityzator remote access and network hardening baseline after the configuration update.");
         }
 
-        if (!AreAssignmentsAligned(finalAssignments, includeGroupId, excludeGroupId))
+        if (!AreAssignmentsAligned(finalAssignments, includeGroupId, excludeGroupId, allUsersAssignment))
         {
             throw new InvalidOperationException(
                 "Intune readback did not match the requested include or exclusion group assignment after the baseline update.");
@@ -985,9 +993,10 @@ public sealed class IntuneEndpointAutomationClient
         string accessToken,
         string includeGroupId,
         string? excludeGroupId,
+        bool allUsersAssignment = false,
         CancellationToken cancellationToken = default)
     {
-        ValidatePilotAssignment(includeGroupId, excludeGroupId, "Endpoint browser hardening");
+        ValidatePilotAssignment(includeGroupId, excludeGroupId, allUsersAssignment, "Endpoint browser hardening");
 
         var graphRoles = ParseGraphRoles(accessToken);
         var matchingConfigurations = await ListMatchingGroupPolicyConfigurationsAsync(
@@ -1045,11 +1054,11 @@ public sealed class IntuneEndpointAutomationClient
         }
 
         var currentAssignments = await ListGroupPolicyAssignmentsAsync(configurationId, accessToken, graphRoles, cancellationToken);
-        var assignmentsAlreadyAligned = AreAssignmentsAligned(currentAssignments, includeGroupId, excludeGroupId);
+        var assignmentsAlreadyAligned = AreAssignmentsAligned(currentAssignments, includeGroupId, excludeGroupId, allUsersAssignment);
 
         if (!assignmentsAlreadyAligned)
         {
-            await AssignGroupPolicyConfigurationAsync(configurationId, includeGroupId, excludeGroupId, accessToken, graphRoles, cancellationToken);
+            await AssignGroupPolicyConfigurationAsync(configurationId, includeGroupId, excludeGroupId, accessToken, graphRoles, cancellationToken, allUsersAssignment);
             updatedAssignments = true;
         }
 
@@ -1062,7 +1071,7 @@ public sealed class IntuneEndpointAutomationClient
                 "Intune readback did not match the Securityzator browser hardening baseline after the configuration update.");
         }
 
-        if (!AreAssignmentsAligned(finalAssignments, includeGroupId, excludeGroupId))
+        if (!AreAssignmentsAligned(finalAssignments, includeGroupId, excludeGroupId, allUsersAssignment))
         {
             throw new InvalidOperationException(
                 "Intune readback did not match the requested include or exclusion group assignment after the browser hardening update.");
@@ -1091,6 +1100,7 @@ public sealed class IntuneEndpointAutomationClient
         IReadOnlyCollection<string> excludeUserIds,
         IReadOnlyCollection<string> excludeDeviceIds,
         string? excludeGroupId,
+        bool allUsersAssignment = false,
         CancellationToken cancellationToken = default)
     {
         var graphRoles = ParseGraphRoles(accessToken);
@@ -1236,6 +1246,7 @@ public sealed class IntuneEndpointAutomationClient
         IReadOnlyCollection<string> excludeUserIds,
         IReadOnlyCollection<string> excludeDeviceIds,
         string? excludeGroupId,
+        bool allUsersAssignment = false,
         CancellationToken cancellationToken = default)
     {
         var graphRoles = ParseGraphRoles(accessToken);
@@ -1429,9 +1440,10 @@ public sealed class IntuneEndpointAutomationClient
         string accessToken,
         string includeGroupId,
         string? excludeGroupId,
+        bool allUsersAssignment = false,
         CancellationToken cancellationToken = default)
     {
-        ValidatePilotAssignment(includeGroupId, excludeGroupId, "Endpoint attack surface reduction");
+        ValidatePilotAssignment(includeGroupId, excludeGroupId, allUsersAssignment, "Endpoint attack surface reduction");
 
         var desiredSnapshot = CreateDesiredAttackSurfaceReductionSnapshot();
         var graphRoles = ParseGraphRoles(accessToken);
@@ -1495,11 +1507,11 @@ public sealed class IntuneEndpointAutomationClient
         }
 
         var currentAssignments = await ListAssignmentsAsync(configurationId, accessToken, graphRoles, cancellationToken);
-        var assignmentsAlreadyAligned = AreAssignmentsAligned(currentAssignments, includeGroupId, excludeGroupId);
+        var assignmentsAlreadyAligned = AreAssignmentsAligned(currentAssignments, includeGroupId, excludeGroupId, allUsersAssignment);
 
         if (!assignmentsAlreadyAligned)
         {
-            await AssignConfigurationAsync(configurationId, includeGroupId, excludeGroupId, accessToken, graphRoles, cancellationToken);
+            await AssignConfigurationAsync(configurationId, includeGroupId, excludeGroupId, accessToken, graphRoles, cancellationToken, allUsersAssignment);
             updatedAssignments = true;
         }
 
@@ -1512,7 +1524,7 @@ public sealed class IntuneEndpointAutomationClient
                 "Intune readback did not match the Securityzator endpoint attack surface reduction baseline after the configuration update.");
         }
 
-        if (!AreAssignmentsAligned(finalAssignments, includeGroupId, excludeGroupId))
+        if (!AreAssignmentsAligned(finalAssignments, includeGroupId, excludeGroupId, allUsersAssignment))
         {
             throw new InvalidOperationException(
                 "Intune readback did not match the requested include or exclusion group assignment after the attack surface reduction update.");
@@ -1537,9 +1549,10 @@ public sealed class IntuneEndpointAutomationClient
         string accessToken,
         string includeGroupId,
         string? excludeGroupId,
+        bool allUsersAssignment = false,
         CancellationToken cancellationToken = default)
     {
-        ValidatePilotAssignment(includeGroupId, excludeGroupId, "Endpoint OS security baseline");
+        ValidatePilotAssignment(includeGroupId, excludeGroupId, allUsersAssignment, "Endpoint OS security baseline");
 
         var desiredSnapshot = CreateDesiredOsSecurityBaselineSnapshot();
         var graphRoles = ParseGraphRoles(accessToken);
@@ -1603,11 +1616,11 @@ public sealed class IntuneEndpointAutomationClient
         }
 
         var currentAssignments = await ListAssignmentsAsync(configurationId, accessToken, graphRoles, cancellationToken);
-        var assignmentsAlreadyAligned = AreAssignmentsAligned(currentAssignments, includeGroupId, excludeGroupId);
+        var assignmentsAlreadyAligned = AreAssignmentsAligned(currentAssignments, includeGroupId, excludeGroupId, allUsersAssignment);
 
         if (!assignmentsAlreadyAligned)
         {
-            await AssignConfigurationAsync(configurationId, includeGroupId, excludeGroupId, accessToken, graphRoles, cancellationToken);
+            await AssignConfigurationAsync(configurationId, includeGroupId, excludeGroupId, accessToken, graphRoles, cancellationToken, allUsersAssignment);
             updatedAssignments = true;
         }
 
@@ -1620,7 +1633,7 @@ public sealed class IntuneEndpointAutomationClient
                 "Intune readback did not match the Securityzator endpoint OS security baseline after the configuration update.");
         }
 
-        if (!AreAssignmentsAligned(finalAssignments, includeGroupId, excludeGroupId))
+        if (!AreAssignmentsAligned(finalAssignments, includeGroupId, excludeGroupId, allUsersAssignment))
         {
             throw new InvalidOperationException(
                 "Intune readback did not match the requested include or exclusion group assignment after the endpoint OS security baseline update.");
@@ -2708,20 +2721,22 @@ public sealed class IntuneEndpointAutomationClient
         string? excludeGroupId,
         string accessToken,
         IReadOnlyCollection<string> graphRoles,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool allUsersAssignment = false)
     {
         var requestUrl =
             $"{GetGraphBetaBaseUrl()}/deviceManagement/groupPolicyConfigurations/{Uri.EscapeDataString(configurationId)}/assign";
+
+        var includeTarget = allUsersAssignment
+            ? new Dictionary<string, object?> { ["@odata.type"] = "#microsoft.graph.allDevicesAssignmentTarget" }
+            : new Dictionary<string, object?> { ["@odata.type"] = "#microsoft.graph.groupAssignmentTarget", ["groupId"] = includeGroupId };
+
         var assignments = new List<Dictionary<string, object?>>
         {
             new()
             {
                 ["@odata.type"] = "#microsoft.graph.groupPolicyConfigurationAssignment",
-                ["target"] = new Dictionary<string, object?>
-                {
-                    ["@odata.type"] = "#microsoft.graph.groupAssignmentTarget",
-                    ["groupId"] = includeGroupId
-                }
+                ["target"] = includeTarget
             }
         };
 
@@ -2755,7 +2770,7 @@ public sealed class IntuneEndpointAutomationClient
         if (!response.IsSuccessStatusCode)
         {
             throw new GraphServiceException(BuildErrorMessage(
-                "Intune browser hardening assignment update failed",
+                "Intune group policy configuration assignment update failed",
                 response.StatusCode,
                 responseBody,
                 graphRoles));
@@ -2768,21 +2783,23 @@ public sealed class IntuneEndpointAutomationClient
         string? excludeGroupId,
         string accessToken,
         IReadOnlyCollection<string> graphRoles,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool allUsersAssignment = false)
     {
         var requestUrl =
             $"{_options.Value.GraphBaseUrl.TrimEnd('/')}/deviceManagement/deviceConfigurations/{Uri.EscapeDataString(configurationId)}/assign";
+
+        var includeTarget = allUsersAssignment
+            ? new Dictionary<string, object?> { ["@odata.type"] = "#microsoft.graph.allDevicesAssignmentTarget" }
+            : new Dictionary<string, object?> { ["@odata.type"] = "#microsoft.graph.groupAssignmentTarget", ["groupId"] = includeGroupId };
+
         var assignments = new List<Dictionary<string, object?>>
         {
             new()
             {
                 ["@odata.type"] = "#microsoft.graph.deviceConfigurationAssignment",
                 ["id"] = Guid.NewGuid().ToString(),
-                ["target"] = new Dictionary<string, object?>
-                {
-                    ["@odata.type"] = "#microsoft.graph.groupAssignmentTarget",
-                    ["groupId"] = includeGroupId
-                }
+                ["target"] = includeTarget
             }
         };
 
@@ -2817,7 +2834,7 @@ public sealed class IntuneEndpointAutomationClient
         if (!response.IsSuccessStatusCode)
         {
             throw new GraphServiceException(BuildErrorMessage(
-                "Intune core protection assignment update failed",
+                "Intune configuration assignment update failed",
                 response.StatusCode,
                 responseBody,
                 graphRoles));
@@ -2861,12 +2878,20 @@ public sealed class IntuneEndpointAutomationClient
             GetBoolean(payload.RootElement, "defenderRequireBehaviorMonitoring"),
             GetBoolean(payload.RootElement, "defenderRequireNetworkInspectionSystem"),
             GetBoolean(payload.RootElement, "defenderScanDownloads"),
+            GetBoolean(payload.RootElement, "defenderScanScriptsLoadedInInternetExplorer"),
+            GetBoolean(payload.RootElement, "defenderBlockEndUserAccess"),
+            GetInt32(payload.RootElement, "defenderSignatureUpdateIntervalInHours"),
+            GetInt32(payload.RootElement, "defenderScanMaxCpu"),
             GetBoolean(payload.RootElement, "defenderScanArchiveFiles"),
             GetBoolean(payload.RootElement, "defenderScanIncomingMail"),
             GetBoolean(payload.RootElement, "defenderScanRemovableDrivesDuringFullScan"),
+            GetBoolean(payload.RootElement, "defenderScanMappedNetworkDrivesDuringFullScan"),
+            GetBoolean(payload.RootElement, "defenderScanNetworkFiles"),
             GetBoolean(payload.RootElement, "defenderRequireCloudProtection"),
             GetString(payload.RootElement, "defenderCloudBlockLevel"),
             GetString(payload.RootElement, "defenderPromptForSampleSubmission"),
+            GetString(payload.RootElement, "defenderScheduledQuickScanTime"),
+            GetString(payload.RootElement, "defenderScanType"),
             GetString(payload.RootElement, "defenderMonitorFileActivity"),
             GetString(payload.RootElement, "defenderPotentiallyUnwantedAppAction"),
             GetString(payload.RootElement, "defenderPotentiallyUnwantedAppActionSetting"));
@@ -3191,7 +3216,12 @@ public sealed class IntuneEndpointAutomationClient
             GetOmaSettingString(payload.RootElement, SafeDllSearchModeOmaUri),
             GetOmaSettingString(payload.RootElement, EnumerateAdministratorsOnElevationOmaUri),
             GetOmaSettingString(payload.RootElement, ApplyUacRestrictionsToLocalAccountsOnNetworkLogonOmaUri),
-            GetOmaSettingInt32(payload.RootElement, AlwaysInstallElevatedOmaUri),
+            GetFirstAvailableOmaSettingInt32(
+                payload.RootElement,
+                AlwaysInstallElevatedOmaUri,
+                LegacyAlwaysInstallElevatedOmaUri),
+            HasOmaSetting(payload.RootElement, AlwaysInstallElevatedOmaUri),
+            HasOmaSetting(payload.RootElement, LegacyAlwaysInstallElevatedOmaUri),
             GetOmaSettingString(payload.RootElement, WDigestAuthenticationOmaUri));
     }
 
@@ -3321,12 +3351,20 @@ public sealed class IntuneEndpointAutomationClient
             ["defenderRequireBehaviorMonitoring"] = true,
             ["defenderRequireNetworkInspectionSystem"] = true,
             ["defenderScanDownloads"] = true,
+            ["defenderScanScriptsLoadedInInternetExplorer"] = true,
+            ["defenderBlockEndUserAccess"] = false,
+            ["defenderSignatureUpdateIntervalInHours"] = 8,
+            ["defenderScanMaxCpu"] = 50,
             ["defenderScanArchiveFiles"] = true,
             ["defenderScanIncomingMail"] = true,
             ["defenderScanRemovableDrivesDuringFullScan"] = true,
+            ["defenderScanMappedNetworkDrivesDuringFullScan"] = true,
+            ["defenderScanNetworkFiles"] = true,
             ["defenderRequireCloudProtection"] = true,
             ["defenderCloudBlockLevel"] = "high",
             ["defenderPromptForSampleSubmission"] = "promptBeforeSendingPersonalData",
+            ["defenderScheduledQuickScanTime"] = "02:00:00.0000000",
+            ["defenderScanType"] = "quick",
             ["defenderMonitorFileActivity"] = "monitorAllFiles",
             ["defenderPotentiallyUnwantedAppAction"] = "block",
             ["defenderPotentiallyUnwantedAppActionSetting"] = "enable"
@@ -3620,11 +3658,19 @@ public sealed class IntuneEndpointAutomationClient
             true,
             true,
             true,
+            false,
+            8,
+            50,
+            true,
+            true,
+            true,
             true,
             true,
             true,
             "high",
             "promptBeforeSendingPersonalData",
+            "02:00:00.0000000",
+            "quick",
             "monitorAllFiles",
             "block",
             "enable");
@@ -3667,6 +3713,8 @@ public sealed class IntuneEndpointAutomationClient
             "<disabled/>",
             "<enabled/>",
             0,
+            true,
+            false,
             "<disabled/>");
     }
 
@@ -3805,12 +3853,20 @@ public sealed class IntuneEndpointAutomationClient
                && actual.DefenderRequireBehaviorMonitoring == desired.DefenderRequireBehaviorMonitoring
                && actual.DefenderRequireNetworkInspectionSystem == desired.DefenderRequireNetworkInspectionSystem
                && actual.DefenderScanDownloads == desired.DefenderScanDownloads
+               && actual.DefenderScanScriptsLoadedInInternetExplorer == desired.DefenderScanScriptsLoadedInInternetExplorer
+               && actual.DefenderBlockEndUserAccess == desired.DefenderBlockEndUserAccess
+               && actual.DefenderSignatureUpdateIntervalInHours == desired.DefenderSignatureUpdateIntervalInHours
+               && actual.DefenderScanMaxCpu == desired.DefenderScanMaxCpu
                && actual.DefenderScanArchiveFiles == desired.DefenderScanArchiveFiles
                && actual.DefenderScanIncomingMail == desired.DefenderScanIncomingMail
                && actual.DefenderScanRemovableDrivesDuringFullScan == desired.DefenderScanRemovableDrivesDuringFullScan
+               && actual.DefenderScanMappedNetworkDrivesDuringFullScan == desired.DefenderScanMappedNetworkDrivesDuringFullScan
+               && actual.DefenderScanNetworkFiles == desired.DefenderScanNetworkFiles
                && actual.DefenderRequireCloudProtection == desired.DefenderRequireCloudProtection
                && string.Equals(actual.DefenderCloudBlockLevel, desired.DefenderCloudBlockLevel, StringComparison.OrdinalIgnoreCase)
                && string.Equals(actual.DefenderPromptForSampleSubmission, desired.DefenderPromptForSampleSubmission, StringComparison.OrdinalIgnoreCase)
+               && string.Equals(actual.DefenderScheduledQuickScanTime, desired.DefenderScheduledQuickScanTime, StringComparison.OrdinalIgnoreCase)
+               && string.Equals(actual.DefenderScanType, desired.DefenderScanType, StringComparison.OrdinalIgnoreCase)
                && string.Equals(actual.DefenderMonitorFileActivity, desired.DefenderMonitorFileActivity, StringComparison.OrdinalIgnoreCase)
                && string.Equals(actual.DefenderPotentiallyUnwantedAppAction, desired.DefenderPotentiallyUnwantedAppAction, StringComparison.OrdinalIgnoreCase);
     }
@@ -3850,6 +3906,8 @@ public sealed class IntuneEndpointAutomationClient
                && OmaValueEquals(actual.EnumerateAdministratorsOnElevation, desired.EnumerateAdministratorsOnElevation)
                && OmaValueEquals(actual.ApplyUacRestrictionsToLocalAccountsOnNetworkLogon, desired.ApplyUacRestrictionsToLocalAccountsOnNetworkLogon)
                && actual.AlwaysInstallElevated == desired.AlwaysInstallElevated
+               && actual.HasExpectedAlwaysInstallElevatedSetting == desired.HasExpectedAlwaysInstallElevatedSetting
+               && actual.HasLegacyAlwaysInstallElevatedSetting == desired.HasLegacyAlwaysInstallElevatedSetting
                && OmaValueEquals(actual.WDigestAuthentication, desired.WDigestAuthentication);
     }
 
@@ -3978,24 +4036,45 @@ public sealed class IntuneEndpointAutomationClient
     private static bool AreAssignmentsAligned(
         IReadOnlyList<EndpointAssignmentTargetSnapshot> assignments,
         string includeGroupId,
-        string? excludeGroupId)
+        string? excludeGroupId,
+        bool allUsersAssignment = false)
     {
         if (assignments.Count == 0)
         {
             return false;
         }
 
-        var normalizedInclude = includeGroupId.Trim();
         var normalizedExclude = string.IsNullOrWhiteSpace(excludeGroupId)
             ? null
             : excludeGroupId.Trim();
 
+        if (allUsersAssignment)
+        {
+            var allDevicesMatches = assignments.Where(static a => a.IsAllDevicesTarget).ToArray();
+            var excludeMatches = assignments.Where(static a => a.IsExcludeGroup).ToArray();
+            var unexpectedAssignments = assignments.Where(a => !a.IsAllDevicesTarget && !a.IsExcludeGroup).ToArray();
+
+            if (unexpectedAssignments.Length > 0 || allDevicesMatches.Length != 1)
+            {
+                return false;
+            }
+
+            if (normalizedExclude is null)
+            {
+                return excludeMatches.Length == 0;
+            }
+
+            return excludeMatches.Length == 1
+                   && string.Equals(excludeMatches[0].TargetId, normalizedExclude, StringComparison.OrdinalIgnoreCase);
+        }
+
+        var normalizedInclude = includeGroupId.Trim();
         var includeMatches = assignments.Where(static assignment => assignment.IsIncludeGroup).ToArray();
-        var excludeMatches = assignments.Where(static assignment => assignment.IsExcludeGroup).ToArray();
-        var unexpectedAssignments = assignments.Where(assignment =>
+        var groupExcludeMatches = assignments.Where(static assignment => assignment.IsExcludeGroup).ToArray();
+        var unexpectedGroupAssignments = assignments.Where(assignment =>
             !assignment.IsIncludeGroup && !assignment.IsExcludeGroup).ToArray();
 
-        if (unexpectedAssignments.Length > 0)
+        if (unexpectedGroupAssignments.Length > 0)
         {
             return false;
         }
@@ -4008,18 +4087,18 @@ public sealed class IntuneEndpointAutomationClient
 
         if (normalizedExclude is null)
         {
-            return excludeMatches.Length == 0;
+            return groupExcludeMatches.Length == 0;
         }
 
-        return excludeMatches.Length == 1
-               && string.Equals(excludeMatches[0].TargetId, normalizedExclude, StringComparison.OrdinalIgnoreCase);
+        return groupExcludeMatches.Length == 1
+               && string.Equals(groupExcludeMatches[0].TargetId, normalizedExclude, StringComparison.OrdinalIgnoreCase);
     }
 
     private static IReadOnlyList<string> BuildCoreProtectionNotes(string? excludeGroupId)
     {
         var notes = new List<string>
         {
-            "This Intune baseline package now manages two Securityzator profiles: the Windows general configuration for Defender Antivirus, cloud protection, and PUA blocking, plus an endpoint-protection hardening profile for tamper protection and network protection.",
+            "This Intune baseline package now manages two Securityzator profiles: the Windows general configuration for Defender Antivirus, cloud protection, scheduled quick scans, script and network-file scanning, and PUA blocking, plus an endpoint-protection hardening profile for tamper protection and network protection.",
             "EDR in block mode, update-governance controls, and Defender cloud-service connectivity remain explicit follow-up items because they still need a different Intune, Defender, or rollout surface than this first endpoint package."
         };
 
@@ -4188,11 +4267,12 @@ public sealed class IntuneEndpointAutomationClient
     private static void ValidatePilotAssignment(
         string includeGroupId,
         string? excludeGroupId,
+        bool allUsersAssignment,
         string baselineName)
     {
-        if (!Guid.TryParse(includeGroupId, out _))
+        if (!allUsersAssignment && !Guid.TryParse(includeGroupId, out _))
         {
-            throw new InvalidOperationException($"{baselineName} needs a valid include group object ID for pilot assignment.");
+            throw new InvalidOperationException($"{baselineName} needs either a valid include group object ID or the all-devices assignment option.");
         }
 
         if (!string.IsNullOrWhiteSpace(excludeGroupId) && !Guid.TryParse(excludeGroupId, out _))
@@ -4200,7 +4280,7 @@ public sealed class IntuneEndpointAutomationClient
             throw new InvalidOperationException($"{baselineName} received an invalid exclusion group object ID.");
         }
 
-        if (string.Equals(includeGroupId, excludeGroupId, StringComparison.OrdinalIgnoreCase))
+        if (!allUsersAssignment && string.Equals(includeGroupId, excludeGroupId, StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidOperationException($"{baselineName} cannot use the same group for include and exclusion.");
         }
@@ -4449,6 +4529,39 @@ public sealed class IntuneEndpointAutomationClient
         }
 
         return 0;
+    }
+
+    private static int GetFirstAvailableOmaSettingInt32(JsonElement element, params string[] omaUris)
+    {
+        foreach (var omaUri in omaUris)
+        {
+            var value = GetOmaSettingInt32(element, omaUri);
+            if (value != 0)
+            {
+                return value;
+            }
+        }
+
+        return 0;
+    }
+
+    private static bool HasOmaSetting(JsonElement element, string omaUri)
+    {
+        if (!element.TryGetProperty("omaSettings", out var omaSettingsElement)
+            || omaSettingsElement.ValueKind != JsonValueKind.Array)
+        {
+            return false;
+        }
+
+        foreach (var item in omaSettingsElement.EnumerateArray())
+        {
+            if (string.Equals(GetString(item, "omaUri"), omaUri, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static string GetOmaSettingString(JsonElement element, string omaUri)
@@ -4927,12 +5040,20 @@ public sealed class IntuneEndpointAutomationClient
         bool DefenderRequireBehaviorMonitoring,
         bool DefenderRequireNetworkInspectionSystem,
         bool DefenderScanDownloads,
+        bool DefenderScanScriptsLoadedInInternetExplorer,
+        bool DefenderBlockEndUserAccess,
+        int DefenderSignatureUpdateIntervalInHours,
+        int DefenderScanMaxCpu,
         bool DefenderScanArchiveFiles,
         bool DefenderScanIncomingMail,
         bool DefenderScanRemovableDrivesDuringFullScan,
+        bool DefenderScanMappedNetworkDrivesDuringFullScan,
+        bool DefenderScanNetworkFiles,
         bool DefenderRequireCloudProtection,
         string DefenderCloudBlockLevel,
         string DefenderPromptForSampleSubmission,
+        string DefenderScheduledQuickScanTime,
+        string DefenderScanType,
         string DefenderMonitorFileActivity,
         string DefenderPotentiallyUnwantedAppAction,
         string DefenderPotentiallyUnwantedAppActionSetting);
@@ -5113,6 +5234,8 @@ public sealed class IntuneEndpointAutomationClient
         string EnumerateAdministratorsOnElevation,
         string ApplyUacRestrictionsToLocalAccountsOnNetworkLogon,
         int AlwaysInstallElevated,
+        bool HasExpectedAlwaysInstallElevatedSetting,
+        bool HasLegacyAlwaysInstallElevatedSetting,
         string WDigestAuthentication);
 
     internal sealed record EndpointRemoteAccessAndNetworkHardeningConfigurationSnapshot(
@@ -5222,6 +5345,10 @@ public sealed class IntuneEndpointAutomationClient
             || string.Equals(TargetType, "microsoft.graph.groupAssignmentTarget", StringComparison.OrdinalIgnoreCase)
             || string.Equals(TargetType, "#microsoft.graph.scopeTagGroupAssignmentTarget", StringComparison.OrdinalIgnoreCase)
             || string.Equals(TargetType, "microsoft.graph.scopeTagGroupAssignmentTarget", StringComparison.OrdinalIgnoreCase);
+
+        public bool IsAllDevicesTarget =>
+            string.Equals(TargetType, "#microsoft.graph.allDevicesAssignmentTarget", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(TargetType, "microsoft.graph.allDevicesAssignmentTarget", StringComparison.OrdinalIgnoreCase);
 
         public bool IsExcludeGroup =>
             string.Equals(TargetType, "#microsoft.graph.exclusionGroupAssignmentTarget", StringComparison.OrdinalIgnoreCase)

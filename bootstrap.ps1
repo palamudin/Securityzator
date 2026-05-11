@@ -16,16 +16,46 @@ param(
     [string]$ClientId,
     [string]$ClientSecret,
     [string]$ConnectionId,
-    [string]$RequirementsPath = (Join-Path $PSScriptRoot "bootstrap.requirements.psd1"),
-    [string]$GraphSourceMapPath = (Join-Path $PSScriptRoot "graph.source-map.psd1"),
-    [string]$BootstrapAuthStatePath = (Join-Path $PSScriptRoot ".bootstrap-auth.json"),
-    [string]$AuthPath = (Join-Path $PSScriptRoot "Auth.txt"),
-    [string]$StatePath = (Join-Path $PSScriptRoot "src\Securityzator.Web\App_Data\securityzator-state.json")
+    [string]$RequirementsPath,
+    [string]$GraphSourceMapPath,
+    [string]$BootstrapAuthStatePath,
+    [string]$AuthPath,
+    [string]$StatePath
 )
 
 $ErrorActionPreference = "Stop"
 $script:BootstrapRequirements = $null
 $script:GraphSourceMap = $null
+
+$scriptRoot = if (-not [string]::IsNullOrWhiteSpace($PSScriptRoot)) {
+    $PSScriptRoot
+}
+elseif (-not [string]::IsNullOrWhiteSpace($PSCommandPath)) {
+    Split-Path -Parent $PSCommandPath
+}
+else {
+    (Get-Location).Path
+}
+
+if ([string]::IsNullOrWhiteSpace($RequirementsPath)) {
+    $RequirementsPath = Join-Path $scriptRoot "bootstrap.requirements.psd1"
+}
+
+if ([string]::IsNullOrWhiteSpace($GraphSourceMapPath)) {
+    $GraphSourceMapPath = Join-Path $scriptRoot "graph.source-map.psd1"
+}
+
+if ([string]::IsNullOrWhiteSpace($BootstrapAuthStatePath)) {
+    $BootstrapAuthStatePath = Join-Path $scriptRoot ".bootstrap-auth.json"
+}
+
+if ([string]::IsNullOrWhiteSpace($AuthPath)) {
+    $AuthPath = Join-Path $scriptRoot "Auth.txt"
+}
+
+if ([string]::IsNullOrWhiteSpace($StatePath)) {
+    $StatePath = Join-Path $scriptRoot "src\Securityzator.Web\App_Data\securityzator-state.json"
+}
 
 if ($Full) {
     $InstallModules = $true

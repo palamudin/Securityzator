@@ -32,12 +32,30 @@ $projects = @(
     "src\\Securityzator.Application\\Securityzator.Application.csproj",
     "src\\Securityzator.Infrastructure\\Securityzator.Infrastructure.csproj",
     "src\\Securityzator.Web\\Securityzator.Web.csproj",
-    "src\\Securityzator.Worker\\Securityzator.Worker.csproj"
+    "src\\Securityzator.Worker\\Securityzator.Worker.csproj",
+    "tools\\Securityzator.SmokeRunner\\Securityzator.SmokeRunner.csproj"
 )
 
 foreach ($project in $projects) {
     Write-Host "Building $project ($Configuration)..."
-    & dotnet build $project --configuration $Configuration --nologo --verbosity minimal
+
+    $projectDirectory = Split-Path -Path (Join-Path $PSScriptRoot $project) -Parent
+    $projectAssetsPath = Join-Path $projectDirectory "obj\project.assets.json"
+    $buildArguments = @(
+        "build",
+        $project,
+        "--configuration", $Configuration,
+        "--nologo",
+        "--verbosity", "minimal"
+    )
+
+    # Keep the shakedown tool build reliable in constrained environments by
+    # reusing the already-restored assets when they are available locally.
+    if ($project -like "tools\\Securityzator.SmokeRunner\\*" -and (Test-Path -LiteralPath $projectAssetsPath)) {
+        $buildArguments += "--no-restore"
+    }
+
+    & dotnet @buildArguments
 
     if ($LASTEXITCODE -ne 0) {
         throw "Build failed for $project."

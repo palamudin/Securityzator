@@ -253,7 +253,11 @@ try {
         Set-HostedContentFilterRule `
             -Identity $spamFilterRuleName `
             -RecipientDomainIs $acceptedDomains `
-            -Enabled $true `
+            -ErrorAction Stop | Out-Null
+
+        Enable-HostedContentFilterRule `
+            -Identity $spamFilterRuleName `
+            -Confirm:$false `
             -ErrorAction Stop | Out-Null
     }
 
@@ -293,7 +297,11 @@ try {
         Set-HostedOutboundSpamFilterRule `
             -Identity $outboundSpamRuleName `
             -SenderDomainIs $acceptedDomains `
-            -Enabled $true `
+            -ErrorAction Stop | Out-Null
+
+        Enable-HostedOutboundSpamFilterRule `
+            -Identity $outboundSpamRuleName `
+            -Confirm:$false `
             -ErrorAction Stop | Out-Null
     }
 

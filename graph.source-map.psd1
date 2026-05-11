@@ -85,6 +85,31 @@
                 },
                 @{
                     ResourceAppId = '00000003-0000-0000-c000-000000000000'
+                    Value         = 'DeviceManagementConfiguration.Read.All'
+                    Feature       = 'base'
+                },
+                @{
+                    ResourceAppId = '00000003-0000-0000-c000-000000000000'
+                    Value         = 'DeviceManagementConfiguration.ReadWrite.All'
+                    Feature       = 'base'
+                },
+                @{
+                    ResourceAppId = '00000003-0000-0000-c000-000000000000'
+                    Value         = 'DeviceManagementManagedDevices.Read.All'
+                    Feature       = 'base'
+                },
+                @{
+                    ResourceAppId = '00000003-0000-0000-c000-000000000000'
+                    Value         = 'Directory.Read.All'
+                    Feature       = 'base'
+                },
+                @{
+                    ResourceAppId = '00000003-0000-0000-c000-000000000000'
+                    Value         = 'Domain.ReadWrite.All'
+                    Feature       = 'base'
+                },
+                @{
+                    ResourceAppId = '00000003-0000-0000-c000-000000000000'
                     Value         = 'Group.Read.All'
                     Feature       = 'base'
                 },
@@ -96,6 +121,16 @@
                 @{
                     ResourceAppId = '00000003-0000-0000-c000-000000000000'
                     Value         = 'Policy.Read.All'
+                    Feature       = 'base'
+                },
+                @{
+                    ResourceAppId = '00000003-0000-0000-c000-000000000000'
+                    Value         = 'Policy.ReadWrite.Authorization'
+                    Feature       = 'base'
+                },
+                @{
+                    ResourceAppId = '00000003-0000-0000-c000-000000000000'
+                    Value         = 'Policy.ReadWrite.ConsentRequest'
                     Feature       = 'base'
                 },
                 @{
@@ -141,6 +176,21 @@
                 },
                 @{
                     ResourceAppId = '00000003-0000-0000-c000-000000000000'
+                    Value         = 'DeviceManagementConfiguration.Read.All'
+                    Feature       = 'base'
+                },
+                @{
+                    ResourceAppId = '00000003-0000-0000-c000-000000000000'
+                    Value         = 'DeviceManagementConfiguration.ReadWrite.All'
+                    Feature       = 'base'
+                },
+                @{
+                    ResourceAppId = '00000003-0000-0000-c000-000000000000'
+                    Value         = 'DeviceManagementManagedDevices.Read.All'
+                    Feature       = 'base'
+                },
+                @{
+                    ResourceAppId = '00000003-0000-0000-c000-000000000000'
                     Value         = 'Directory.Read.All'
                     Feature       = 'base'
                 },
@@ -171,7 +221,22 @@
                 },
                 @{
                     ResourceAppId = '00000003-0000-0000-c000-000000000000'
+                    Value         = 'Policy.ReadWrite.Authorization'
+                    Feature       = 'base'
+                },
+                @{
+                    ResourceAppId = '00000003-0000-0000-c000-000000000000'
+                    Value         = 'Policy.ReadWrite.ConsentRequest'
+                    Feature       = 'base'
+                },
+                @{
+                    ResourceAppId = '00000003-0000-0000-c000-000000000000'
                     Value         = 'Policy.ReadWrite.ConditionalAccess'
+                    Feature       = 'base'
+                },
+                @{
+                    ResourceAppId = '00000003-0000-0000-c000-000000000000'
+                    Value         = 'Domain.ReadWrite.All'
                     Feature       = 'base'
                 },
                 @{

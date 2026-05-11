@@ -37,6 +37,36 @@
                 @{
                     ResourceAppId      = '00000003-0000-0000-c000-000000000000'
                     ResourceDisplayName = 'Microsoft Graph'
+                    Value              = 'DeviceManagementConfiguration.Read.All'
+                    Feature            = 'base'
+                },
+                @{
+                    ResourceAppId      = '00000003-0000-0000-c000-000000000000'
+                    ResourceDisplayName = 'Microsoft Graph'
+                    Value              = 'DeviceManagementConfiguration.ReadWrite.All'
+                    Feature            = 'base'
+                },
+                @{
+                    ResourceAppId      = '00000003-0000-0000-c000-000000000000'
+                    ResourceDisplayName = 'Microsoft Graph'
+                    Value              = 'DeviceManagementManagedDevices.Read.All'
+                    Feature            = 'base'
+                },
+                @{
+                    ResourceAppId      = '00000003-0000-0000-c000-000000000000'
+                    ResourceDisplayName = 'Microsoft Graph'
+                    Value              = 'Directory.Read.All'
+                    Feature            = 'base'
+                },
+                @{
+                    ResourceAppId      = '00000003-0000-0000-c000-000000000000'
+                    ResourceDisplayName = 'Microsoft Graph'
+                    Value              = 'Domain.ReadWrite.All'
+                    Feature            = 'base'
+                },
+                @{
+                    ResourceAppId      = '00000003-0000-0000-c000-000000000000'
+                    ResourceDisplayName = 'Microsoft Graph'
                     Value              = 'Group.Read.All'
                     Feature            = 'base'
                 },
@@ -50,6 +80,18 @@
                     ResourceAppId      = '00000003-0000-0000-c000-000000000000'
                     ResourceDisplayName = 'Microsoft Graph'
                     Value              = 'Policy.Read.All'
+                    Feature            = 'base'
+                },
+                @{
+                    ResourceAppId      = '00000003-0000-0000-c000-000000000000'
+                    ResourceDisplayName = 'Microsoft Graph'
+                    Value              = 'Policy.ReadWrite.Authorization'
+                    Feature            = 'base'
+                },
+                @{
+                    ResourceAppId      = '00000003-0000-0000-c000-000000000000'
+                    ResourceDisplayName = 'Microsoft Graph'
+                    Value              = 'Policy.ReadWrite.ConsentRequest'
                     Feature            = 'base'
                 },
                 @{
@@ -101,6 +143,24 @@
                 @{
                     ResourceAppId      = '00000003-0000-0000-c000-000000000000'
                     ResourceDisplayName = 'Microsoft Graph'
+                    Value              = 'DeviceManagementConfiguration.Read.All'
+                    Feature            = 'base'
+                },
+                @{
+                    ResourceAppId      = '00000003-0000-0000-c000-000000000000'
+                    ResourceDisplayName = 'Microsoft Graph'
+                    Value              = 'DeviceManagementConfiguration.ReadWrite.All'
+                    Feature            = 'base'
+                },
+                @{
+                    ResourceAppId      = '00000003-0000-0000-c000-000000000000'
+                    ResourceDisplayName = 'Microsoft Graph'
+                    Value              = 'DeviceManagementManagedDevices.Read.All'
+                    Feature            = 'base'
+                },
+                @{
+                    ResourceAppId      = '00000003-0000-0000-c000-000000000000'
+                    ResourceDisplayName = 'Microsoft Graph'
                     Value              = 'Directory.Read.All'
                     Feature            = 'base'
                 },
@@ -137,7 +197,25 @@
                 @{
                     ResourceAppId      = '00000003-0000-0000-c000-000000000000'
                     ResourceDisplayName = 'Microsoft Graph'
+                    Value              = 'Policy.ReadWrite.Authorization'
+                    Feature            = 'base'
+                },
+                @{
+                    ResourceAppId      = '00000003-0000-0000-c000-000000000000'
+                    ResourceDisplayName = 'Microsoft Graph'
+                    Value              = 'Policy.ReadWrite.ConsentRequest'
+                    Feature            = 'base'
+                },
+                @{
+                    ResourceAppId      = '00000003-0000-0000-c000-000000000000'
+                    ResourceDisplayName = 'Microsoft Graph'
                     Value              = 'Policy.ReadWrite.ConditionalAccess'
+                    Feature            = 'base'
+                },
+                @{
+                    ResourceAppId      = '00000003-0000-0000-c000-000000000000'
+                    ResourceDisplayName = 'Microsoft Graph'
+                    Value              = 'Domain.ReadWrite.All'
                     Feature            = 'base'
                 },
                 @{

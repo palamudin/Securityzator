@@ -14,5 +14,6 @@ public sealed record RemediationJobWorkItem(
     string ConnectionDisplayName,
     string IncludeGroupId,
     string? ExcludeGroupId,
+    bool AllUsersAssignment,
     int AttemptCount,
     int MaxAttempts);

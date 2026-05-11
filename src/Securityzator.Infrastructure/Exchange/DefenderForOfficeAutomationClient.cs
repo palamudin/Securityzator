@@ -15,6 +15,8 @@ public sealed class DefenderForOfficeAutomationClient
     private const string SafeAttachmentRuleName = "SS-AUTO | Safe Attachments baseline";
     private const string SpamFilterPolicyName = "SS-AUTO | Spam baseline";
     private const string SpamFilterRuleName = "SS-AUTO | Spam baseline";
+    private const string MalwareFilterPolicyName = "SS-AUTO | Anti-malware baseline";
+    private const string MalwareFilterRuleName = "SS-AUTO | Anti-malware baseline";
     private const string OutboundSpamFilterPolicyName = "SS-AUTO | Outbound forwarding baseline";
     private const string OutboundSpamFilterRuleName = "SS-AUTO | Outbound forwarding baseline";
     private const uint OutboundExternalRecipientLimit = 500;
@@ -276,6 +278,68 @@ public sealed class DefenderForOfficeAutomationClient
         }
     }
 
+    public async Task<DefenderForOfficeAntiMalwareBaselineResult> ApplyAntiMalwareBaselineAsync(
+        string tenantId,
+        string clientId,
+        string certificateThumbprint,
+        string certificateStoreLocation,
+        string certificateStoreName,
+        CancellationToken cancellationToken = default)
+    {
+        var script = BuildApplyAntiMalwareBaselineScript(
+            tenantId,
+            clientId,
+            certificateThumbprint,
+            certificateStoreLocation,
+            certificateStoreName);
+        var result = await _powerShellRunner.ExecuteScriptAsync(script, cancellationToken);
+
+        if (!result.Succeeded)
+        {
+            throw new InvalidOperationException(BuildPowerShellErrorMessage(result));
+        }
+
+        var payloadText = ExtractJsonPayload(result.StandardOutput);
+
+        try
+        {
+            var payload = JsonSerializer.Deserialize<DefenderForOfficeAntiMalwareBaselinePayload>(
+                payloadText,
+                new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+            if (payload is null)
+            {
+                throw new InvalidOperationException("Defender for Office anti-malware automation returned an empty payload.");
+            }
+
+            if (!payload.Success)
+            {
+                throw new InvalidOperationException(
+                    NormalizeFailureMessage(payload.ErrorMessage ?? "Defender for Office anti-malware automation failed without returning a reason."));
+            }
+
+            if (payload.AntiMalware is null)
+            {
+                throw new InvalidOperationException("Defender for Office anti-malware automation returned an incomplete payload.");
+            }
+
+            return new DefenderForOfficeAntiMalwareBaselineResult(
+                payload.AlreadyCompliant,
+                payload.NeedsManualFollowUp,
+                payload.AntiMalware,
+                payload.Notes ?? Array.Empty<string>());
+        }
+        catch (JsonException ex)
+        {
+            var payloadPreview = payloadText.Length <= 600
+                ? payloadText
+                : payloadText[..600];
+            throw new InvalidOperationException(
+                $"Defender for Office anti-malware automation returned an unreadable payload. {ex.Message} Payload: {payloadPreview}",
+                ex);
+        }
+    }
+
     private static string BuildApplyAntiPhishBaselineScript(
         string tenantId,
         string clientId,
@@ -349,6 +413,125 @@ public sealed class DefenderForOfficeAutomationClient
                      return $leftValue -eq $rightValue
                  }
 
+                 function Get-CommandParameterNames {
+                     param([string] $CommandName)
+
+                     return @(
+                         (Get-Command $CommandName -ErrorAction Stop).Parameters.Keys |
+                             ForEach-Object { [string] $_ } |
+                             Sort-Object -Unique
+                     )
+                 }
+
+                 function Test-ParameterSupported {
+                     param(
+                         [string[]] $ParameterNames,
+                         [string] $ParameterName
+                     )
+
+                     return @($ParameterNames) -contains $ParameterName
+                 }
+
+                 function Get-AntiPhishCapabilities {
+                     $policyParameterNames = @(
+                         (Get-CommandParameterNames -CommandName 'Set-AntiPhishPolicy') +
+                         (Get-CommandParameterNames -CommandName 'New-AntiPhishPolicy') |
+                             Sort-Object -Unique
+                     )
+
+                     return [ordered]@{
+                         policyParameterNames = $policyParameterNames
+                         supportsEnableMailboxIntelligence = Test-ParameterSupported -ParameterNames $policyParameterNames -ParameterName 'EnableMailboxIntelligence'
+                         supportsEnableMailboxIntelligenceProtection = Test-ParameterSupported -ParameterNames $policyParameterNames -ParameterName 'EnableMailboxIntelligenceProtection'
+                         supportsMailboxIntelligenceProtectionAction = Test-ParameterSupported -ParameterNames $policyParameterNames -ParameterName 'MailboxIntelligenceProtectionAction'
+                         supportsImpersonationProtectionState = Test-ParameterSupported -ParameterNames $policyParameterNames -ParameterName 'ImpersonationProtectionState'
+                         supportsEnableOrganizationDomainsProtection = Test-ParameterSupported -ParameterNames $policyParameterNames -ParameterName 'EnableOrganizationDomainsProtection'
+                         supportsPhishThresholdLevel = Test-ParameterSupported -ParameterNames $policyParameterNames -ParameterName 'PhishThresholdLevel'
+                         supportsEnableSimilarDomainsSafetyTips = Test-ParameterSupported -ParameterNames $policyParameterNames -ParameterName 'EnableSimilarDomainsSafetyTips'
+                         supportsEnableSimilarUsersSafetyTips = Test-ParameterSupported -ParameterNames $policyParameterNames -ParameterName 'EnableSimilarUsersSafetyTips'
+                         supportsEnableUnusualCharactersSafetyTips = Test-ParameterSupported -ParameterNames $policyParameterNames -ParameterName 'EnableUnusualCharactersSafetyTips'
+                         supportsEnableTargetedDomainsProtection = Test-ParameterSupported -ParameterNames $policyParameterNames -ParameterName 'EnableTargetedDomainsProtection'
+                         supportsTargetedDomainsToProtect = Test-ParameterSupported -ParameterNames $policyParameterNames -ParameterName 'TargetedDomainsToProtect'
+                         supportsTargetedDomainProtectionAction = Test-ParameterSupported -ParameterNames $policyParameterNames -ParameterName 'TargetedDomainProtectionAction'
+                         supportsEnableTargetedUserProtection = Test-ParameterSupported -ParameterNames $policyParameterNames -ParameterName 'EnableTargetedUserProtection'
+                         supportsTargetedUsersToProtect = Test-ParameterSupported -ParameterNames $policyParameterNames -ParameterName 'TargetedUsersToProtect'
+                         supportsTargetedUserProtectionAction = Test-ParameterSupported -ParameterNames $policyParameterNames -ParameterName 'TargetedUserProtectionAction'
+                     }
+                 }
+
+                 function Get-MissingAntiPhishCapabilityDescriptions {
+                     param(
+                         [hashtable] $Capabilities,
+                         [bool] $NeedsProtectedUserCoverage
+                     )
+
+                     $missing = New-Object System.Collections.Generic.List[string]
+
+                     if (-not $Capabilities.supportsEnableMailboxIntelligence) {
+                         $missing.Add('EnableMailboxIntelligence')
+                     }
+
+                     if (-not $Capabilities.supportsEnableMailboxIntelligenceProtection) {
+                         $missing.Add('EnableMailboxIntelligenceProtection')
+                     }
+
+                     if (-not $Capabilities.supportsMailboxIntelligenceProtectionAction) {
+                         $missing.Add('MailboxIntelligenceProtectionAction')
+                     }
+
+                     if (-not $Capabilities.supportsImpersonationProtectionState) {
+                         $missing.Add('ImpersonationProtectionState')
+                     }
+
+                     if (-not $Capabilities.supportsEnableOrganizationDomainsProtection) {
+                         $missing.Add('EnableOrganizationDomainsProtection')
+                     }
+
+                     if (-not $Capabilities.supportsPhishThresholdLevel) {
+                         $missing.Add('PhishThresholdLevel')
+                     }
+
+                     if (-not $Capabilities.supportsEnableSimilarDomainsSafetyTips) {
+                         $missing.Add('EnableSimilarDomainsSafetyTips')
+                     }
+
+                     if (-not $Capabilities.supportsEnableSimilarUsersSafetyTips) {
+                         $missing.Add('EnableSimilarUsersSafetyTips')
+                     }
+
+                     if (-not $Capabilities.supportsEnableUnusualCharactersSafetyTips) {
+                         $missing.Add('EnableUnusualCharactersSafetyTips')
+                     }
+
+                     if (-not $Capabilities.supportsEnableTargetedDomainsProtection) {
+                         $missing.Add('EnableTargetedDomainsProtection')
+                     }
+
+                     if (-not $Capabilities.supportsTargetedDomainsToProtect) {
+                         $missing.Add('TargetedDomainsToProtect')
+                     }
+
+                     if (-not $Capabilities.supportsTargetedDomainProtectionAction) {
+                         $missing.Add('TargetedDomainProtectionAction')
+                     }
+
+                     if ($NeedsProtectedUserCoverage) {
+                         if (-not $Capabilities.supportsEnableTargetedUserProtection) {
+                             $missing.Add('EnableTargetedUserProtection')
+                         }
+
+                         if (-not $Capabilities.supportsTargetedUsersToProtect) {
+                             $missing.Add('TargetedUsersToProtect')
+                         }
+
+                         if (-not $Capabilities.supportsTargetedUserProtectionAction) {
+                             $missing.Add('TargetedUserProtectionAction')
+                         }
+                     }
+
+                     return @($missing | Sort-Object -Unique)
+                 }
+
                  function Ensure-OrganizationCustomizationEnabled {
                      $organizationConfig = Get-OrganizationConfig -ErrorAction Stop
                      if ($null -ne $organizationConfig -and [bool] $organizationConfig.IsDehydrated) {
@@ -368,7 +551,7 @@ public sealed class DefenderForOfficeAutomationClient
 
                      $policy = Get-FirstOrDefault -Items ((Get-AntiPhishPolicy -ErrorAction Stop) | Where-Object { $_.Name -eq $PolicyName })
                      $rule = Get-FirstOrDefault -Items ((Get-AntiPhishRule -ErrorAction Stop) | Where-Object { $_.Name -eq $RuleName })
-                     $recipientDomains = Convert-ToStringArray -Values ($rule | ForEach-Object { $_.RecipientDomainIs })
+                     $recipientDomains = Convert-ToStringArray -Values (Get-OptionalPropertyValue -InputObject $rule -PropertyName 'RecipientDomainIs')
                      $targetedDomains = Convert-ToStringArray -Values (Get-OptionalPropertyValue -InputObject $policy -PropertyName 'TargetedDomainsToProtect')
                      $targetedUsers = Convert-ToStringArray -Values (Get-OptionalPropertyValue -InputObject $policy -PropertyName 'TargetedUsersToProtect')
                      $state = [string] (Get-OptionalPropertyValue -InputObject $rule -PropertyName 'State')
@@ -402,25 +585,75 @@ public sealed class DefenderForOfficeAutomationClient
                      param(
                          [hashtable] $Snapshot,
                          [string[]] $AcceptedDomains,
-                         [string[]] $ProtectedUsersToProtect
+                         [string[]] $ProtectedUsersToProtect,
+                         [hashtable] $Capabilities
                      )
+
+                     $canEvaluateTargetedDomainProtection =
+                         $Capabilities.supportsEnableTargetedDomainsProtection -and
+                         $Capabilities.supportsTargetedDomainsToProtect -and
+                         $Capabilities.supportsTargetedDomainProtectionAction
+
+                        $canEvaluateTargetedUserProtection =
+                         @($ProtectedUsersToProtect).Count -gt 0 -and
+                         $Capabilities.supportsEnableTargetedUserProtection -and
+                         $Capabilities.supportsTargetedUsersToProtect -and
+                         $Capabilities.supportsTargetedUserProtectionAction
+
+                     $mailboxIntelligenceCompliant =
+                         (-not $Capabilities.supportsEnableMailboxIntelligence -or $Snapshot.enableMailboxIntelligence -eq $true) -and
+                         (-not $Capabilities.supportsEnableMailboxIntelligenceProtection -or $Snapshot.enableMailboxIntelligenceProtection -eq $true)
+
+                     if ($Capabilities.supportsMailboxIntelligenceProtectionAction) {
+                         $mailboxIntelligenceCompliant =
+                             $mailboxIntelligenceCompliant -and
+                             $Snapshot.mailboxIntelligenceProtectionAction -eq 'MoveToJmf'
+                     }
+
+                     $impersonationStateCompliant = if ($Capabilities.supportsImpersonationProtectionState) {
+                         $Snapshot.impersonationProtectionState -eq 'Manual'
+                     }
+                     else {
+                         $true
+                     }
+
+                     $organizationDomainsProtectionCompliant = -not $Capabilities.supportsEnableOrganizationDomainsProtection -or $Snapshot.enableOrganizationDomainsProtection -eq $true
+                     $phishThresholdCompliant = -not $Capabilities.supportsPhishThresholdLevel -or $Snapshot.phishThresholdLevel -ge 3
+                     $similarDomainsSafetyTipsCompliant = -not $Capabilities.supportsEnableSimilarDomainsSafetyTips -or $Snapshot.enableSimilarDomainsSafetyTips -eq $true
+                     $similarUsersSafetyTipsCompliant = -not $Capabilities.supportsEnableSimilarUsersSafetyTips -or $Snapshot.enableSimilarUsersSafetyTips -eq $true
+                     $unusualCharactersSafetyTipsCompliant = -not $Capabilities.supportsEnableUnusualCharactersSafetyTips -or $Snapshot.enableUnusualCharactersSafetyTips -eq $true
+
+                     $domainProtectionCompliant =
+                         $organizationDomainsProtectionCompliant -and
+                         $similarDomainsSafetyTipsCompliant -and
+                         $similarUsersSafetyTipsCompliant -and
+                         $unusualCharactersSafetyTipsCompliant -and
+                         $phishThresholdCompliant -and
+                         (Test-StringArrayEquals -Left $Snapshot.recipientDomains -Right $AcceptedDomains)
+
+                     if ($canEvaluateTargetedDomainProtection) {
+                         $domainProtectionCompliant =
+                             $domainProtectionCompliant -and
+                             $Snapshot.enableTargetedDomainsProtection -eq $true -and
+                             $Snapshot.targetedDomainProtectionAction -eq 'Quarantine' -and
+                             (Test-StringArrayEquals -Left $Snapshot.targetedDomains -Right $AcceptedDomains)
+                     }
+
+                     $userProtectionCompliant = $true
+                     if ($canEvaluateTargetedUserProtection) {
+                         $userProtectionCompliant =
+                             $Snapshot.enableTargetedUserProtection -eq $true -and
+                             $Snapshot.targetedUserProtectionAction -eq 'Quarantine' -and
+                             (Test-StringArrayEquals -Left $Snapshot.targetedUsers -Right $ProtectedUsersToProtect)
+                     }
 
                      $baseCompliance =
                          $Snapshot.policyExists -and
                          $Snapshot.ruleExists -and
-                         $Snapshot.enableMailboxIntelligence -eq $true -and
-                         $Snapshot.enableMailboxIntelligenceProtection -eq $true -and
-                         $Snapshot.mailboxIntelligenceProtectionAction -eq 'MoveToJmf' -and
-                         $Snapshot.impersonationProtectionState -eq 'Manual' -and
-                         $Snapshot.enableOrganizationDomainsProtection -eq $true -and
-                         $Snapshot.enableTargetedDomainsProtection -eq $true -and
-                         $Snapshot.targetedDomainProtectionAction -eq 'Quarantine' -and
-                         $Snapshot.enableSimilarDomainsSafetyTips -eq $true -and
-                         $Snapshot.enableSimilarUsersSafetyTips -eq $true -and
-                         $Snapshot.enableUnusualCharactersSafetyTips -eq $true -and
-                         $Snapshot.phishThresholdLevel -ge 2 -and
-                         (Test-StringArrayEquals -Left $Snapshot.recipientDomains -Right $AcceptedDomains) -and
-                         (Test-StringArrayEquals -Left $Snapshot.targetedDomains -Right $AcceptedDomains)
+                         $mailboxIntelligenceCompliant -and
+                         $impersonationStateCompliant -and
+                         $domainProtectionCompliant -and
+                         $userProtectionCompliant
 
                      if (-not $baseCompliance) {
                          return $false
@@ -472,7 +705,6 @@ public sealed class DefenderForOfficeAutomationClient
                      -AppId '{{EscapePowerShellSingleQuotedString(clientId)}}' `
                      -Certificate $certificate `
                      -Organization '{{EscapePowerShellSingleQuotedString(tenantId)}}' `
-                     -CommandName Get-OrganizationConfig,Enable-OrganizationCustomization,Get-AcceptedDomain,Get-AntiPhishPolicy,Get-AntiPhishRule,Set-AntiPhishPolicy,Set-AntiPhishRule,New-AntiPhishPolicy,New-AntiPhishRule,Enable-AntiPhishRule `
                      -ShowBanner:$false `
                      -ShowProgress:$false `
                      -ErrorAction Stop | Out-Null
@@ -480,34 +712,82 @@ public sealed class DefenderForOfficeAutomationClient
                  try {
                      try {
                          $organizationCustomizationEnabled = Ensure-OrganizationCustomizationEnabled
+                         $antiPhishCapabilities = Get-AntiPhishCapabilities
                          $acceptedDomains = @(Get-AcceptedDomain -ErrorAction Stop |
                              ForEach-Object { [string] $_.DomainName } |
                              Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
                              Sort-Object -Unique)
 
-                         if ($acceptedDomains.Count -eq 0) {
+                         if (@($acceptedDomains).Count -eq 0) {
                              throw 'Get-AcceptedDomain did not return any accepted domains for this tenant.'
                          }
 
                          $beforeAntiPhish = Get-AntiPhishSnapshot -PolicyName $antiPhishPolicyName -RuleName $antiPhishRuleName
-                         $needsManualFollowUp = $protectedUsersToProtect.Count -eq 0
-                         $alreadyCompliant = Test-AntiPhishCompliance -Snapshot $beforeAntiPhish -AcceptedDomains $acceptedDomains -ProtectedUsersToProtect $protectedUsersToProtect
+                         $needsManualFollowUp = @($protectedUsersToProtect).Count -eq 0
+                         $alreadyCompliant = Test-AntiPhishCompliance -Snapshot $beforeAntiPhish -AcceptedDomains $acceptedDomains -ProtectedUsersToProtect $protectedUsersToProtect -Capabilities $antiPhishCapabilities
+
+                         $canApplyTargetedDomainProtection =
+                             $antiPhishCapabilities.supportsEnableTargetedDomainsProtection -and
+                             $antiPhishCapabilities.supportsTargetedDomainsToProtect -and
+                             $antiPhishCapabilities.supportsTargetedDomainProtectionAction
+
+                         $canApplyTargetedUserProtection =
+                             @($protectedUsersToProtect).Count -gt 0 -and
+                             $antiPhishCapabilities.supportsEnableTargetedUserProtection -and
+                             $antiPhishCapabilities.supportsTargetedUsersToProtect -and
+                             $antiPhishCapabilities.supportsTargetedUserProtectionAction
 
                          if (-not $alreadyCompliant) {
                              $policyParameters = @{
-                                 EnableMailboxIntelligence = $true
-                                 EnableMailboxIntelligenceProtection = $true
-                                 MailboxIntelligenceProtectionAction = 'MoveToJmf'
-                                 ImpersonationProtectionState = 'Manual'
-                                 EnableOrganizationDomainsProtection = $true
-                                 EnableTargetedDomainsProtection = $true
-                                 TargetedDomainsToProtect = $acceptedDomains
-                                 TargetedDomainProtectionAction = 'Quarantine'
-                                 EnableSimilarDomainsSafetyTips = $true
-                                 EnableSimilarUsersSafetyTips = $true
-                                 EnableUnusualCharactersSafetyTips = $true
-                                 PhishThresholdLevel = 2
                                  ErrorAction = 'Stop'
+                             }
+
+                             if ($antiPhishCapabilities.supportsEnableMailboxIntelligence) {
+                                 $policyParameters['EnableMailboxIntelligence'] = $true
+                             }
+
+                             if ($antiPhishCapabilities.supportsEnableMailboxIntelligenceProtection) {
+                                 $policyParameters['EnableMailboxIntelligenceProtection'] = $true
+                             }
+
+                             if ($antiPhishCapabilities.supportsEnableOrganizationDomainsProtection) {
+                                 $policyParameters['EnableOrganizationDomainsProtection'] = $true
+                             }
+
+                             if ($antiPhishCapabilities.supportsPhishThresholdLevel) {
+                                 $policyParameters['PhishThresholdLevel'] = 3
+                             }
+
+                             if ($antiPhishCapabilities.supportsEnableSimilarDomainsSafetyTips) {
+                                 $policyParameters['EnableSimilarDomainsSafetyTips'] = $true
+                             }
+
+                             if ($antiPhishCapabilities.supportsEnableSimilarUsersSafetyTips) {
+                                 $policyParameters['EnableSimilarUsersSafetyTips'] = $true
+                             }
+
+                             if ($antiPhishCapabilities.supportsEnableUnusualCharactersSafetyTips) {
+                                 $policyParameters['EnableUnusualCharactersSafetyTips'] = $true
+                             }
+
+                             if ($antiPhishCapabilities.supportsMailboxIntelligenceProtectionAction) {
+                                 $policyParameters['MailboxIntelligenceProtectionAction'] = 'MoveToJmf'
+                             }
+
+                             if ($antiPhishCapabilities.supportsImpersonationProtectionState) {
+                                 $policyParameters['ImpersonationProtectionState'] = 'Manual'
+                             }
+
+                             if ($canApplyTargetedDomainProtection) {
+                                 $policyParameters['EnableTargetedDomainsProtection'] = $true
+                                 $policyParameters['TargetedDomainsToProtect'] = $acceptedDomains
+                                 $policyParameters['TargetedDomainProtectionAction'] = 'Quarantine'
+                             }
+
+                             if ($canApplyTargetedUserProtection) {
+                                 $policyParameters['EnableTargetedUserProtection'] = $true
+                                 $policyParameters['TargetedUsersToProtect'] = $protectedUsersToProtect
+                                 $policyParameters['TargetedUserProtectionAction'] = 'Quarantine'
                              }
 
                              if ($beforeAntiPhish.policyExists) {
@@ -542,17 +822,25 @@ public sealed class DefenderForOfficeAutomationClient
                          }
 
                          $afterAntiPhish = Get-AntiPhishSnapshot -PolicyName $antiPhishPolicyName -RuleName $antiPhishRuleName
-                         if ($protectedUsersToProtect.Count -gt 0) {
-                             $needsManualFollowUp = -not $afterAntiPhish.enableTargetedUserProtection -or $afterAntiPhish.targetedUsers.Count -eq 0
-                         }
                          $notes = New-Object System.Collections.Generic.List[string]
+                         $missingCapabilities = Get-MissingAntiPhishCapabilityDescriptions -Capabilities $antiPhishCapabilities -NeedsProtectedUserCoverage (@($protectedUsersToProtect).Count -gt 0)
 
                          if ($organizationCustomizationEnabled) {
                              $notes.Add('Exchange Online organization customization was enabled automatically before the anti-phish baseline was applied.')
                          }
 
-                         if ($needsManualFollowUp) {
-                             $notes.Add('Targeted user impersonation protection still needs operator review. This session can harden mailbox intelligence, domain impersonation, and safety tips, but the targeted-user impersonation parameters are not currently being applied automatically in this baseline.')
+                         if (@($missingCapabilities).Count -gt 0) {
+                             $needsManualFollowUp = $true
+                             $notes.Add("This Exchange session does not expose the full anti-phish parameter surface. Missing parameters: $($missingCapabilities -join ', '). Use a fuller Exchange Online PowerShell session or the Defender portal for the missing impersonation settings.")
+                         }
+
+                         if (@($protectedUsersToProtect).Count -eq 0) {
+                             $needsManualFollowUp = $true
+                             $notes.Add('Protected-user discovery did not return any privileged accounts to seed targeted user impersonation protection.')
+                         }
+                         elseif (-not $canApplyTargetedUserProtection -or -not $afterAntiPhish.enableTargetedUserProtection -or @($afterAntiPhish.targetedUsers).Count -eq 0) {
+                             $needsManualFollowUp = $true
+                             $notes.Add('Targeted user impersonation protection still needs operator review. This baseline hardened mailbox intelligence, recipient scope, and available impersonation controls, but the protected-user seed list was not fully applied in the current Exchange session.')
                          }
 
                          $notes.Add('Phishing ZAP remains covered through the Defender for Office spam baseline where PhishZapEnabled is managed.')
@@ -785,7 +1073,6 @@ public sealed class DefenderForOfficeAutomationClient
                      -AppId '{{EscapePowerShellSingleQuotedString(clientId)}}' `
                      -Certificate $certificate `
                      -Organization '{{EscapePowerShellSingleQuotedString(tenantId)}}' `
-                     -CommandName Get-OrganizationConfig,Enable-OrganizationCustomization,Get-AcceptedDomain,Get-AtpPolicyForO365,Set-AtpPolicyForO365,Get-SafeLinksPolicy,Get-SafeLinksRule,Set-SafeLinksPolicy,Set-SafeLinksRule,New-SafeLinksPolicy,New-SafeLinksRule,Get-SafeAttachmentPolicy,Get-SafeAttachmentRule,Set-SafeAttachmentPolicy,Set-SafeAttachmentRule,New-SafeAttachmentPolicy,New-SafeAttachmentRule `
                      -ShowBanner:$false `
                      -ShowProgress:$false `
                      -ErrorAction Stop | Out-Null
@@ -798,7 +1085,7 @@ public sealed class DefenderForOfficeAutomationClient
                              Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
                              Sort-Object -Unique)
 
-                         if ($acceptedDomains.Count -eq 0) {
+                         if (@($acceptedDomains).Count -eq 0) {
                              throw 'Get-AcceptedDomain did not return any accepted domains for this tenant.'
                          }
 
@@ -1104,7 +1391,6 @@ public sealed class DefenderForOfficeAutomationClient
                      -AppId '{{EscapePowerShellSingleQuotedString(clientId)}}' `
                      -Certificate $certificate `
                      -Organization '{{EscapePowerShellSingleQuotedString(tenantId)}}' `
-                     -CommandName Get-OrganizationConfig,Enable-OrganizationCustomization,Set-OrganizationConfig,Get-OwaMailboxPolicy,Set-OwaMailboxPolicy,Get-SharingPolicy `
                      -ShowBanner:$false `
                      -ShowProgress:$false `
                      -ErrorAction Stop | Out-Null
@@ -1376,7 +1662,7 @@ public sealed class DefenderForOfficeAutomationClient
                          $Snapshot.quarantineRetentionPeriod -eq 30 -and
                          $Snapshot.spamZapEnabled -eq $true -and
                          $Snapshot.phishZapEnabled -eq $true -and
-                         $Snapshot.allowedSenderDomains.Count -eq 0 -and
+                         @($Snapshot.allowedSenderDomains).Count -eq 0 -and
                          (Test-StringArrayEquals -Left $Snapshot.recipientDomains -Right $AcceptedDomains)
                  }
 
@@ -1453,7 +1739,7 @@ public sealed class DefenderForOfficeAutomationClient
                              Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
                              Sort-Object -Unique)
 
-                         if ($acceptedDomains.Count -eq 0) {
+                         if (@($acceptedDomains).Count -eq 0) {
                              throw 'Get-AcceptedDomain did not return any accepted domains for this tenant.'
                          }
 
@@ -1500,7 +1786,11 @@ public sealed class DefenderForOfficeAutomationClient
                                  Set-HostedContentFilterRule `
                                      -Identity $spamFilterRuleName `
                                      -RecipientDomainIs $acceptedDomains `
-                                     -Enabled $true `
+                                     -ErrorAction Stop | Out-Null
+
+                                 Enable-HostedContentFilterRule `
+                                     -Identity $spamFilterRuleName `
+                                     -Confirm:$false `
                                      -ErrorAction Stop | Out-Null
                              }
                              else {
@@ -1541,6 +1831,11 @@ public sealed class DefenderForOfficeAutomationClient
                                      -Identity $outboundSpamRuleName `
                                      -SenderDomainIs $acceptedDomains `
                                      -ErrorAction Stop | Out-Null
+
+                                 Enable-HostedOutboundSpamFilterRule `
+                                     -Identity $outboundSpamRuleName `
+                                     -Confirm:$false `
+                                     -ErrorAction Stop | Out-Null
                              }
                              else {
                                  New-HostedOutboundSpamFilterRule `
@@ -1571,7 +1866,7 @@ public sealed class DefenderForOfficeAutomationClient
                              $needsManualFollowUp = $true
                              $notes.Add("Hosted Connection Filter readback was unavailable: $($connectionFilter.readbackError)")
                          }
-                         elseif ($connectionFilter.ipAllowList.Count -gt 0) {
+                         elseif (@($connectionFilter.ipAllowList).Count -gt 0) {
                              $needsManualFollowUp = $true
                              $notes.Add('Default Hosted Connection Filter policy still contains IP allow list entries. Securityzator did not clear them automatically in this slice because approved inbound relays can depend on them.')
                          }
@@ -1583,6 +1878,261 @@ public sealed class DefenderForOfficeAutomationClient
                              inboundSpam = $afterInboundSpam
                              outboundSpam = $afterOutboundSpam
                              connectionFilter = $connectionFilter
+                             notes = $notes
+                         } | ConvertTo-Json -Depth 6 -Compress
+                     }
+                     catch {
+                         [ordered]@{
+                             success = $false
+                             errorMessage = $_.Exception.Message
+                         } | ConvertTo-Json -Depth 4 -Compress
+                     }
+                 }
+                 finally {
+                     Disconnect-ExchangeOnline -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
+                 }
+                 """;
+    }
+
+    private static string BuildApplyAntiMalwareBaselineScript(
+        string tenantId,
+        string clientId,
+        string certificateThumbprint,
+        string certificateStoreLocation,
+        string certificateStoreName)
+    {
+        return $$"""
+                 $ErrorActionPreference = 'Stop'
+                 $ProgressPreference = 'SilentlyContinue'
+                 Set-StrictMode -Version Latest
+
+                 $malwareFilterPolicyName = '{{EscapePowerShellSingleQuotedString(MalwareFilterPolicyName)}}'
+                 $malwareFilterRuleName = '{{EscapePowerShellSingleQuotedString(MalwareFilterRuleName)}}'
+
+                 if (-not (Get-Module -ListAvailable -Name ExchangeOnlineManagement)) {
+                     throw 'The ExchangeOnlineManagement PowerShell module is not installed on this host. Install it before queueing the Defender for Office anti-malware baseline.'
+                 }
+
+                 function Get-FirstOrDefault {
+                     param([object[]] $Items)
+
+                     if ($null -eq $Items) {
+                         return $null
+                     }
+
+                     return @($Items | Select-Object -First 1)[0]
+                 }
+
+                 function Convert-ToStringArray {
+                     param([object] $Values)
+
+                     if ($null -eq $Values) {
+                         return @()
+                     }
+
+                     return @($Values | ForEach-Object { [string] $_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique)
+                 }
+
+                 function Test-StringArrayEquals {
+                     param(
+                         [string[]] $Left,
+                         [string[]] $Right
+                     )
+
+                     $leftValue = (@($Left | Sort-Object -Unique) -join '|')
+                     $rightValue = (@($Right | Sort-Object -Unique) -join '|')
+
+                     return $leftValue -eq $rightValue
+                 }
+
+                 function Ensure-OrganizationCustomizationEnabled {
+                     $organizationConfig = Get-OrganizationConfig -ErrorAction Stop
+                     if ($null -ne $organizationConfig -and [bool] $organizationConfig.IsDehydrated) {
+                         Enable-OrganizationCustomization -ErrorAction Stop | Out-Null
+                         Start-Sleep -Seconds 5
+                         return $true
+                     }
+
+                     return $false
+                 }
+
+                 function Get-OptionalPropertyValue {
+                     param(
+                         [object] $InputObject,
+                         [string] $PropertyName
+                     )
+
+                     if ($null -eq $InputObject) {
+                         return $null
+                     }
+
+                     $property = $InputObject.PSObject.Properties[$PropertyName]
+                     if ($null -eq $property) {
+                         return $null
+                     }
+
+                     return $property.Value
+                 }
+
+                 function Get-AntiMalwareSnapshot {
+                     param(
+                         [string] $PolicyName,
+                         [string] $RuleName
+                     )
+
+                     $policy = Get-FirstOrDefault -Items ((Get-MalwareFilterPolicy -ErrorAction Stop) | Where-Object { $_.Name -eq $PolicyName })
+                     $rule = Get-FirstOrDefault -Items ((Get-MalwareFilterRule -ErrorAction Stop) | Where-Object { $_.Name -eq $RuleName })
+                     $recipientDomains = Convert-ToStringArray -Values (Get-OptionalPropertyValue -InputObject $rule -PropertyName 'RecipientDomainIs')
+
+                     return [ordered]@{
+                         policyExists = $null -ne $policy
+                         ruleExists = $null -ne $rule
+                         policyName = if ($null -eq $policy) { $PolicyName } else { [string] $policy.Name }
+                         ruleName = if ($null -eq $rule) { $RuleName } else { [string] $rule.Name }
+                         ruleState = [string] (Get-OptionalPropertyValue -InputObject $rule -PropertyName 'State')
+                         enableFileFilter = if ($null -eq $policy) { $false } else { [bool] (Get-OptionalPropertyValue -InputObject $policy -PropertyName 'EnableFileFilter') }
+                         fileTypeAction = if ($null -eq $policy) { '' } else { [string] (Get-OptionalPropertyValue -InputObject $policy -PropertyName 'FileTypeAction') }
+                         zapEnabled = if ($null -eq $policy) { $false } else { [bool] (Get-OptionalPropertyValue -InputObject $policy -PropertyName 'ZapEnabled') }
+                         quarantineTag = if ($null -eq $policy) { '' } else { [string] (Get-OptionalPropertyValue -InputObject $policy -PropertyName 'QuarantineTag') }
+                         recipientDomains = $recipientDomains
+                     }
+                 }
+
+                 function Test-AntiMalwareCompliance {
+                     param(
+                         [hashtable] $Snapshot,
+                         [string[]] $AcceptedDomains
+                     )
+
+                     return (
+                         $Snapshot.policyExists -and
+                         $Snapshot.ruleExists -and
+                         $Snapshot.enableFileFilter -eq $true -and
+                         $Snapshot.fileTypeAction -eq 'Reject' -and
+                         $Snapshot.zapEnabled -eq $true -and
+                         $Snapshot.quarantineTag -eq 'AdminOnlyAccessPolicy' -and
+                         (Test-StringArrayEquals -Left $Snapshot.recipientDomains -Right $AcceptedDomains))
+                 }
+
+                 function Find-Certificate {
+                     param(
+                         [string] $Thumbprint,
+                         [string] $StoreLocationText,
+                         [string] $StoreNameText
+                     )
+
+                     $storeLocation = [System.Security.Cryptography.X509Certificates.StoreLocation]::$StoreLocationText
+                     $storeName = [System.Security.Cryptography.X509Certificates.StoreName]::$StoreNameText
+                     $store = [System.Security.Cryptography.X509Certificates.X509Store]::new($storeName, $storeLocation)
+                     $store.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadOnly)
+
+                     try {
+                         $certificate = $store.Certificates |
+                             Where-Object { $_.Thumbprint -eq $Thumbprint } |
+                             Sort-Object NotAfter -Descending |
+                             Select-Object -First 1
+
+                         if ($null -eq $certificate) {
+                             throw "Automation certificate '$Thumbprint' was not found in $StoreLocationText\$StoreNameText."
+                         }
+
+                         if (-not $certificate.HasPrivateKey) {
+                             throw "Automation certificate '$Thumbprint' does not have an accessible private key."
+                         }
+
+                         return $certificate
+                     }
+                     finally {
+                         $store.Close()
+                     }
+                 }
+
+                 $certificate = Find-Certificate `
+                     -Thumbprint '{{EscapePowerShellSingleQuotedString(certificateThumbprint)}}' `
+                     -StoreLocationText '{{EscapePowerShellSingleQuotedString(certificateStoreLocation)}}' `
+                     -StoreNameText '{{EscapePowerShellSingleQuotedString(certificateStoreName)}}'
+
+                 Import-Module ExchangeOnlineManagement -MinimumVersion 3.0.0 -ErrorAction Stop
+                 Connect-ExchangeOnline `
+                     -AppId '{{EscapePowerShellSingleQuotedString(clientId)}}' `
+                     -Certificate $certificate `
+                     -Organization '{{EscapePowerShellSingleQuotedString(tenantId)}}' `
+                     -ShowBanner:$false `
+                     -ShowProgress:$false `
+                     -ErrorAction Stop | Out-Null
+
+                 try {
+                     try {
+                         $organizationCustomizationEnabled = Ensure-OrganizationCustomizationEnabled
+                         $acceptedDomains = @(Get-AcceptedDomain -ErrorAction Stop |
+                             ForEach-Object { [string] $_.DomainName } |
+                             Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+                             Sort-Object -Unique)
+
+                         if ($acceptedDomains.Count -eq 0) {
+                             throw 'Get-AcceptedDomain did not return any accepted domains for this tenant.'
+                         }
+
+                         $beforeAntiMalware = Get-AntiMalwareSnapshot -PolicyName $malwareFilterPolicyName -RuleName $malwareFilterRuleName
+                         $alreadyCompliant = Test-AntiMalwareCompliance -Snapshot $beforeAntiMalware -AcceptedDomains $acceptedDomains
+
+                         if (-not $alreadyCompliant) {
+                             if ($beforeAntiMalware.policyExists) {
+                                 Set-MalwareFilterPolicy `
+                                     -Identity $malwareFilterPolicyName `
+                                     -EnableFileFilter $true `
+                                     -FileTypeAction Reject `
+                                     -ZapEnabled $true `
+                                     -QuarantineTag AdminOnlyAccessPolicy `
+                                     -ErrorAction Stop | Out-Null
+                             }
+                             else {
+                                 New-MalwareFilterPolicy `
+                                     -Name $malwareFilterPolicyName `
+                                     -EnableFileFilter $true `
+                                     -FileTypeAction Reject `
+                                     -ZapEnabled $true `
+                                     -QuarantineTag AdminOnlyAccessPolicy `
+                                     -ErrorAction Stop | Out-Null
+                             }
+
+                             if ($beforeAntiMalware.ruleExists) {
+                                 Set-MalwareFilterRule `
+                                     -Identity $malwareFilterRuleName `
+                                     -RecipientDomainIs $acceptedDomains `
+                                     -Priority 0 `
+                                     -ErrorAction Stop | Out-Null
+
+                                 if ($beforeAntiMalware.ruleState -ne 'Enabled') {
+                                     Enable-MalwareFilterRule -Identity $malwareFilterRuleName -Confirm:$false -ErrorAction Stop | Out-Null
+                                 }
+                             }
+                             else {
+                                 New-MalwareFilterRule `
+                                     -Name $malwareFilterRuleName `
+                                     -MalwareFilterPolicy $malwareFilterPolicyName `
+                                     -RecipientDomainIs $acceptedDomains `
+                                     -Enabled $true `
+                                     -Priority 0 `
+                                     -ErrorAction Stop | Out-Null
+                             }
+                         }
+
+                         $afterAntiMalware = Get-AntiMalwareSnapshot -PolicyName $malwareFilterPolicyName -RuleName $malwareFilterRuleName
+                         $notes = New-Object System.Collections.Generic.List[string]
+
+                         if ($organizationCustomizationEnabled) {
+                             $notes.Add('Exchange Online organization customization was enabled automatically before the anti-malware baseline was applied.')
+                         }
+
+                         $notes.Add('This custom anti-malware baseline keeps Microsoft recommended malware ZAP enabled, turns on the common attachment types filter, and sends malware detections to the admin-only quarantine policy.')
+                         $notes.Add('Custom anti-malware policies apply to inbound mail. If Standard or Strict preset security policies cover a recipient, the preset settings take precedence.')
+
+                         [ordered]@{
+                             success = $true
+                             alreadyCompliant = $alreadyCompliant
+                             needsManualFollowUp = $false
+                             antiMalware = $afterAntiMalware
                              notes = $notes
                          } | ConvertTo-Json -Depth 6 -Compress
                      }
@@ -1783,6 +2333,12 @@ public sealed class DefenderForOfficeAutomationClient
         DefenderForOfficeConnectionFilterSnapshot ConnectionFilter,
         IReadOnlyList<string> Notes);
 
+    public sealed record DefenderForOfficeAntiMalwareBaselineResult(
+        bool AlreadyCompliant,
+        bool NeedsManualFollowUp,
+        DefenderForOfficeAntiMalwareSnapshot AntiMalware,
+        IReadOnlyList<string> Notes);
+
     public sealed record DefenderForOfficeInboundSpamSnapshot(
         bool PolicyExists,
         bool RuleExists,
@@ -1819,6 +2375,18 @@ public sealed class DefenderForOfficeAutomationClient
         IReadOnlyList<string> IpAllowList,
         string ReadbackError);
 
+    public sealed record DefenderForOfficeAntiMalwareSnapshot(
+        bool PolicyExists,
+        bool RuleExists,
+        string PolicyName,
+        string RuleName,
+        string RuleState,
+        bool EnableFileFilter,
+        string FileTypeAction,
+        bool ZapEnabled,
+        string QuarantineTag,
+        IReadOnlyList<string> RecipientDomains);
+
     private sealed record DefenderForOfficeBaselinePayload(
         bool Success,
         bool AlreadyCompliant,
@@ -1853,6 +2421,14 @@ public sealed class DefenderForOfficeAutomationClient
         DefenderForOfficeInboundSpamSnapshot? InboundSpam,
         DefenderForOfficeOutboundSpamSnapshot? OutboundSpam,
         DefenderForOfficeConnectionFilterSnapshot? ConnectionFilter,
+        string[]? Notes,
+        string? ErrorMessage);
+
+    private sealed record DefenderForOfficeAntiMalwareBaselinePayload(
+        bool Success,
+        bool AlreadyCompliant,
+        bool NeedsManualFollowUp,
+        DefenderForOfficeAntiMalwareSnapshot? AntiMalware,
         string[]? Notes,
         string? ErrorMessage);
 }

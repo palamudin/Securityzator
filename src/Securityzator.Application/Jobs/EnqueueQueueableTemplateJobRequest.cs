@@ -11,4 +11,5 @@ public sealed record EnqueueQueueableTemplateJobRequest(
     RemediationLaunchMode LaunchMode,
     string TemplateKey,
     string IncludeGroupId,
-    string? ExcludeGroupId);
+    string? ExcludeGroupId,
+    bool AllUsersAssignment = false);

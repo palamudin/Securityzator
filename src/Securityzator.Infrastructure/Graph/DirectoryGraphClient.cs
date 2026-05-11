@@ -7,6 +7,8 @@ namespace Securityzator.Infrastructure.Graph;
 
 public sealed class DirectoryGraphClient
 {
+    private const string LowImpactUserConsentPolicyAssignment = "managePermissionGrantsForSelf.microsoft-user-default-low";
+    private const string OwnedResourcePolicyPrefix = "managePermissionGrantsForOwnedResource.";
     private static readonly HashSet<string> RecommendedAntiPhishRoleDisplayNames = new(StringComparer.OrdinalIgnoreCase)
     {
         "Global Administrator",
@@ -254,6 +256,70 @@ public sealed class DirectoryGraphClient
             defaultDomainBefore,
             defaultDomainAfter,
             activeGlobalAdministrators.Select(user => user.UserPrincipalNameOrDisplayName).ToArray(),
+            notes);
+    }
+
+    internal async Task<EntraLowImpactAppConsentResult> ApplyEntraLowImpactAppConsentAsync(
+        string accessToken,
+        CancellationToken cancellationToken = default)
+    {
+        var authorizationPolicyBefore = await GetAuthorizationPolicyAsync(accessToken, cancellationToken);
+        var notes = new List<string>();
+        var preservedOwnedResourcePolicies = authorizationPolicyBefore.PermissionGrantPoliciesAssigned
+            .Where(IsOwnedResourcePolicyAssignment)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(policy => policy, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        var desiredPolicies = preservedOwnedResourcePolicies
+            .Append(LowImpactUserConsentPolicyAssignment)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(policy => policy, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        var alreadyAligned =
+            !authorizationPolicyBefore.AllowUserConsentForRiskyApps
+            && HaveSamePolicyAssignments(
+                authorizationPolicyBefore.PermissionGrantPoliciesAssigned,
+                desiredPolicies);
+
+        if (!alreadyAligned)
+        {
+            await UpdateAuthorizationPolicyAsync(
+                accessToken,
+                new Dictionary<string, object?>
+                {
+                    ["allowUserConsentForRiskyApps"] = false,
+                    ["defaultUserRolePermissions"] = new Dictionary<string, object?>
+                    {
+                        ["permissionGrantPoliciesAssigned"] = desiredPolicies
+                    }
+                },
+                cancellationToken);
+
+            notes.Add("Restricted default user consent to the built-in low-impact verified-publisher policy.");
+        }
+        else
+        {
+            notes.Add("Default user consent was already restricted to the built-in low-impact verified-publisher policy.");
+        }
+
+        if (preservedOwnedResourcePolicies.Length > 0)
+        {
+            notes.Add($"Preserved {preservedOwnedResourcePolicies.Length} owned-resource consent policy assignment(s).");
+        }
+        else
+        {
+            notes.Add("No owned-resource consent policy assignments needed preservation.");
+        }
+
+        var authorizationPolicyAfter = await GetAuthorizationPolicyAsync(accessToken, cancellationToken);
+
+        return new EntraLowImpactAppConsentResult(
+            !alreadyAligned,
+            preservedOwnedResourcePolicies,
+            authorizationPolicyBefore,
+            authorizationPolicyAfter,
             notes);
     }
 
@@ -665,9 +731,12 @@ public sealed class DirectoryGraphClient
     private static EntraIdentityHygieneFinding BuildUserConsentFinding(GraphAuthorizationPolicy authorizationPolicy)
     {
         var consentDisabled = authorizationPolicy.PermissionGrantPoliciesAssigned.Count == 0;
+        var lowImpactConsentEnabled = HasLowImpactUserConsentAssignment(authorizationPolicy);
         var summary = consentDisabled
             ? "Default user consent to apps is disabled."
-            : $"Default user consent is still enabled through {authorizationPolicy.PermissionGrantPoliciesAssigned.Count} permission grant policy assignment(s).";
+            : lowImpactConsentEnabled
+                ? "Default user consent is restricted to low-impact permissions for verified publishers or apps registered in this tenant."
+                : $"Default user consent is still enabled through {authorizationPolicy.PermissionGrantPoliciesAssigned.Count} permission grant policy assignment(s).";
         var evidence = consentDisabled
             ? new[] { "defaultUserRolePermissions.permissionGrantPoliciesAssigned is empty." }
             : authorizationPolicy.PermissionGrantPoliciesAssigned;
@@ -675,7 +744,7 @@ public sealed class DirectoryGraphClient
         return new EntraIdentityHygieneFinding(
             "IntegratedApps",
             "Ensure user consent to apps accessing company data on their behalf is not allowed",
-            consentDisabled ? "Satisfied" : "NeedsFollowUp",
+            consentDisabled ? "Satisfied" : lowImpactConsentEnabled ? "ManualReview" : "NeedsFollowUp",
             summary,
             evidence);
     }
@@ -873,8 +942,11 @@ public sealed class DirectoryGraphClient
         GraphAuthorizationPolicy authorizationPolicy,
         GraphAdminConsentRequestPolicy adminConsentRequestPolicy)
     {
+        var lowImpactConsentEnabled = HasLowImpactUserConsentAssignment(authorizationPolicy);
         var postureSummary = authorizationPolicy.PermissionGrantPoliciesAssigned.Count == 0 && adminConsentRequestPolicy.IsEnabled
             ? "Default user consent is disabled and the admin consent workflow is enabled, which reduces uncontrolled third-party app integration, but existing enterprise app exposure still needs a separate review."
+            : lowImpactConsentEnabled && adminConsentRequestPolicy.IsEnabled
+                ? "Default user consent is restricted to low-impact verified-publisher apps and the admin consent workflow is enabled, which is safer than broad user consent but still leaves room for approved low-impact app grants."
             : "Third-party app restrictions still need follow-up. User consent and admin consent workflow posture alone do not prove that broader third-party integrations are locked down.";
 
         return new EntraIdentityHygieneFinding(
@@ -887,6 +959,32 @@ public sealed class DirectoryGraphClient
                 $"adminConsentWorkflowEnabled={adminConsentRequestPolicy.IsEnabled}",
                 "Review enterprise applications, consent grants, and approved third-party integration paths separately."
             ]);
+    }
+
+    private static bool HasLowImpactUserConsentAssignment(GraphAuthorizationPolicy authorizationPolicy) =>
+        authorizationPolicy.PermissionGrantPoliciesAssigned.Any(policy =>
+            string.Equals(policy, LowImpactUserConsentPolicyAssignment, StringComparison.OrdinalIgnoreCase));
+
+    private static bool IsOwnedResourcePolicyAssignment(string policyAssignment) =>
+        !string.IsNullOrWhiteSpace(policyAssignment)
+        && policyAssignment.StartsWith(OwnedResourcePolicyPrefix, StringComparison.OrdinalIgnoreCase);
+
+    private static bool HaveSamePolicyAssignments(
+        IReadOnlyList<string> left,
+        IReadOnlyList<string> right)
+    {
+        var normalizedLeft = left
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(item => item, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var normalizedRight = right
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(item => item, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return normalizedLeft.SequenceEqual(normalizedRight, StringComparer.OrdinalIgnoreCase);
     }
 
     private static string GetString(JsonElement element, string propertyName)
@@ -1081,5 +1179,15 @@ public sealed class DirectoryGraphClient
             !UserConsentUpdated
             && !AdminConsentWorkflowUpdated
             && !PasswordPolicyUpdated;
+    }
+
+    internal sealed record EntraLowImpactAppConsentResult(
+        bool UserConsentUpdated,
+        IReadOnlyList<string> PreservedOwnedResourcePolicies,
+        GraphAuthorizationPolicy AuthorizationPolicyBefore,
+        GraphAuthorizationPolicy AuthorizationPolicyAfter,
+        IReadOnlyList<string> Notes)
+    {
+        public bool AlreadyCompliant => !UserConsentUpdated;
     }
 }

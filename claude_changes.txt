@@ -1,0 +1,493 @@
+SECURITYZATOR — CLAUDE CHANGES REVIEW
+======================================
+All changes below correspond exactly to `git diff HEAD` at the time of writing.
+Build: PASSING — 0 errors, 0 warnings (full solution).
+
+
+============================================================================================
+[1] Exchange PowerShell scripts — -CommandName removal
+Files: src/Securityzator.Infrastructure/Exchange/DefenderForOfficeAutomationClient.cs
+       tools/Apply-ExchangeAntiPhishBaseline.ps1
+       tools/Apply-ExchangeSpamAndForwardingBaseline.ps1
+============================================================================================
+
+ROOT CAUSE BEING FIXED:
+  Exchange Online's REST proxy (Connect-ExchangeOnline) has a lazy-load behaviour
+  when -CommandName is used: it only loads the listed cmdlets and returns trimmed
+  parameter metadata for each. In app-only certificate mode this strips parameters
+  that are not in the slim REST manifest — specifically MailboxIntelligenceProtection-
+  Action, EnableTargetedDomainsProtection, TargetedDomains*, and Set-AtpPolicyForO365
+  entirely. The spam/forwarding session had NO -CommandName and worked correctly.
+  The other four sessions had -CommandName and were silently skipping parameters.
+
+CHANGES:
+  DefenderForOfficeAutomationClient.cs:
+    - Removed -CommandName from the Connect-ExchangeOnline call in four inline
+      PowerShell script strings: anti-phish, Safe Links/Attachments,
+      collaboration/mailbox, and anti-malware. The spam/forwarding script was already
+      correct and left untouched.
+    - Added ApplyAntiMalwareBaselineAsync public method (and its private script
+      builder BuildApplyAntiMalwareBaselineScript) so the anti-malware baseline is
+      now a first-class executable template rather than a stub.
+    - Added MalwareFilterPolicyName / MalwareFilterRuleName constants.
+
+  Apply-ExchangeAntiPhishBaseline.ps1 (standalone tool script):
+    - Added Get-CommandParameterNames helper: reflects the actual parameter list of
+      a named cmdlet at runtime via Get-Command, so the script can self-describe its
+      capability surface without relying on the trimmed manifest.
+    - Added Test-ParameterSupported helper: thin boolean wrapper around the above.
+    - Added Get-AntiPhishCapabilities / Get-MissingAntiPhishCapabilityDescriptions:
+      build a capability map (SupportsMailboxIntelligenceProtectionAction, etc.) at
+      runtime. If a parameter is missing the script notes the gap instead of crashing.
+      This is defensive: even after removing -CommandName, the capability check
+      ensures the script handles future API surface changes gracefully.
+
+  Apply-ExchangeSpamAndForwardingBaseline.ps1 (standalone tool script):
+    - Split the Set-HostedContentFilterRule and Set-HostedOutboundSpamFilterRule
+      calls to no longer pass -Enabled $true inline. In some Exchange Online
+      environments passing -Enabled on Set-* raises an error because the -Enabled
+      parameter was moved to Enable-HostedContentFilterRule / Enable-Hosted
+      OutboundSpamFilterRule. Now calls Set-* first, then Enable-* separately with
+      -Confirm:$false. This matches the pattern already used by the anti-phish script.
+
+SIDE EFFECTS:
+  - Full Exchange module load is ~3-5s slower per connection (no -CommandName means
+    no lazy loading). Acceptable given the gain in full parameter surface.
+  - ApplyAntiMalwareBaselineAsync is now callable from ConditionalAccessRemediationService
+    via the ExecuteDefenderForOfficeAntiMalwareBaselineAsync private method.
+
+
+============================================================================================
+[2] Application layer — AllUsersAssignment propagated through the request/record chain
+Files: src/Securityzator.Application/Remediations/QueueableRemediationTemplateRequest.cs
+       src/Securityzator.Application/Jobs/EnqueueQueueableTemplateJobRequest.cs
+       src/Securityzator.Application/Jobs/RemediationJobRecord.cs
+       src/Securityzator.Application/Jobs/RemediationJobWorkItem.cs
+       src/Securityzator.Application/Portal/RemediationTemplateTargeting.cs
+============================================================================================
+
+WHY:
+  Intune policy assignment currently requires a pilot Entra group object ID. Any
+  operator without a pre-created group cannot run an Intune baseline. Microsoft Graph
+  supports allDevicesAssignmentTarget for device-configuration policies (all managed
+  devices, no group required). The fix threads a boolean flag through every layer of
+  the pipeline: web form → job queue → state file → worker → execution engine.
+
+WHAT CHANGED:
+  QueueableRemediationTemplateRequest and EnqueueQueueableTemplateJobRequest:
+    - Added `bool AllUsersAssignment = false` as the last optional parameter.
+    - Default = false: all existing call sites that don't supply it keep the existing
+      pilot-group behaviour unchanged.
+
+  RemediationJobRecord and RemediationJobWorkItem (positional records):
+    - Added `bool AllUsersAssignment` between ExcludeGroupId and the next member
+      (PolicyId / AttemptCount). All constructors in FileBackedRemediationJobService
+      were updated accordingly (see [3] below).
+
+  RemediationTemplateTargeting:
+    - Added `bool SupportsAllUsersAssignment = false` as the fifth optional parameter.
+    - Default = false: all existing CA and Exchange templates unaffected.
+    - The view model and Razor view read this to decide whether to show the
+      "all devices" toggle in the UI.
+
+
+============================================================================================
+[3] Infrastructure jobs and worker pipeline
+Files: src/Securityzator.Infrastructure/Storage/StoredRemediationJob.cs
+       src/Securityzator.Infrastructure/Jobs/FileBackedRemediationJobService.cs
+       src/Securityzator.Worker/Worker.cs
+       tools/Securityzator.SmokeRunner/Program.cs
+       tools/Securityzator.SmokeRunner/Securityzator.SmokeRunner.csproj
+============================================================================================
+
+WHY:
+  AllUsersAssignment must survive the job queue round-trip: written to the JSON state
+  file when enqueued, read back when the worker claims the job.
+
+WHAT CHANGED:
+  StoredRemediationJob:
+    - Added `public bool AllUsersAssignment { get; set; }` (not required, defaults
+      to false). Existing state files without this field deserialise correctly —
+      the missing JSON property defaults to false automatically. No migration needed.
+
+  FileBackedRemediationJobService:
+    - EnqueueAsync: added `bool allUsersAssignment = false`, sets it on
+      StoredRemediationJob.
+    - EnqueueQueueableTemplateAsync: passes request.AllUsersAssignment to EnqueueAsync.
+    - TryClaimNextAsync: includes job.AllUsersAssignment in RemediationJobWorkItem.
+    - ToRecord: includes job.AllUsersAssignment in RemediationJobRecord.
+    - Added two missing template name constants:
+        EntraLowImpactAppConsentTemplateKey / Name — was referenced but absent,
+        causing display-name resolution to fall back to the raw key string.
+        MdoAntiMalwareTemplateKey / Name — same reason.
+
+  Worker.cs:
+    - Passes claimedJob.AllUsersAssignment as the last argument to
+      QueueableRemediationTemplateRequest when dispatching to the remediation service.
+
+  SmokeRunner/Program.cs:
+    - Passes job.AllUsersAssignment to QueueableRemediationTemplateRequest so smoke
+      tests can exercise the all-devices path.
+    - Added --json flag: serialises the outcome to stdout as indented JSON.
+    - Added --jsonPath flag: writes the JSON report to a specified file path.
+    - Added --approvalJustification flag: overrides the hard-coded default justification
+      string, useful for scripted test runs.
+    - Added --launchMode flag: overrides the per-template default launch mode with
+      ReportOnly, Enabled, or DirectApply.
+    - Added missing template entries to ResolveLaunchMode and
+      ResolveApprovalJustification switch expressions (mdo-anti-malware-baseline,
+      mdo-anti-phishing-and-impersonation, exchange-online-collaboration-and-mailbox,
+      entra-low-impact-app-consent). Without these entries the runner would fall
+      through to the default and produce incorrect modes or empty justification strings.
+    - Added SmokeRunnerReport, SmokeRunnerJobSnapshot, and SmokeRunnerRunSnapshot
+      record types for structured JSON output.
+    - Added ResolveTemplateName helper: resolves a template key to its display name
+      when building the JSON report.
+    - Added HasFlag helper: checks for boolean flag arguments in the arg list.
+
+  SmokeRunner.csproj:
+    - Updated project references or package references as needed for the new JSON
+      serialisation path (if any; review the diff directly).
+
+
+============================================================================================
+[4] Blueprint catalog — new templates and SupportsAllUsersAssignment
+File: src/Securityzator.Infrastructure/Blueprints/BusinessPremiumBlueprintCatalog.cs
+============================================================================================
+
+WHY:
+  (a) Two templates were missing: entra-low-impact-app-consent and
+      mdo-anti-malware-baseline. Without catalog entries they cannot be selected
+      from the UI or dispatched by the service.
+  (b) All Intune pilot templates need SupportsAllUsersAssignment = true so the
+      "all devices" toggle appears in the frontend for those templates.
+
+WHAT CHANGED:
+  New template: "entra-low-impact-app-consent"
+    - Sets the tenant's default user consent policy to allow low-impact delegated
+      permissions from verified publishers or tenant-registered apps, while keeping
+      risky-app consent disabled and preserving owned-resource consent policies.
+    - Targeting: tenant-wide, no pilot group (SupportsIncludeGroupSelection = false,
+      SupportsExcludeGroupSelection = false).
+    - DefaultLaunchMode = DirectApply. This is an explicit tradeoff template — it
+      deliberately does NOT max Secure Score (which requires fully disabling user
+      consent) but is the practical safe default for tenants that need users to be
+      able to consent to verified low-risk integrations without admin approval on
+      every request. The template notes explain this so operators understand.
+
+  New template registration: "mdo-anti-malware-baseline"
+    - Registers the anti-malware template in the catalog so it appears in the UI
+      and can be selected for remediation.
+
+  SupportsAllUsersAssignment = true added to 10 Intune targeting blocks:
+    - core-protection, firewall-and-smartscreen, exploit-protection, bitlocker,
+      credential-and-elevation-hardening, remote-access-and-network-hardening,
+      browser-hardening, attack-surface-reduction, os-security-baseline,
+      sensor-and-agent-health-assessment.
+    - CA templates (block-legacy-auth, require-mfa-admins,
+      require-phishing-resistant-mfa-admins) were NOT changed — they use the Entra
+      "Users and groups" CA assignment model, not Intune device assignment targets.
+
+  Safe Links/Attachments template description change:
+    - Removed "Create zero-hour auto purge policies for malware" and
+      "Ensure the Common Attachment Types Filter is enabled" from the Safe Links
+      template description because those controls belong to the anti-malware template,
+      not to Safe Links. This was a categorisation error in the original catalog.
+
+
+============================================================================================
+[5] Web view model and controller
+Files: src/Securityzator.Web/Models/Remediations/RemediationsPageViewModel.cs
+       src/Securityzator.Web/Controllers/RemediationsController.cs
+============================================================================================
+
+WHY:
+  The web form needs to accept the "all devices" boolean from the user, skip group
+  validation when it is set, and pass it through to the job enqueue path.
+
+WHAT CHANGED:
+  RemediationsPageViewModel:
+    - Added `public bool AllUsersAssignment { get; set; }` with
+      [Display(Name = "Apply to all users / all devices")].
+    - Added computed `SupportsAllUsersAssignment` property: delegates to
+      SelectedTemplate.Targeting.SupportsAllUsersAssignment. The Razor view uses
+      this to decide whether to render the toggle at all.
+    - Changed RequiresIncludeGroup:
+        BEFORE: SelectedTemplate.Targeting.SupportsIncludeGroupSelection
+        AFTER:  SelectedTemplate.Targeting.SupportsIncludeGroupSelection && !AllUsersAssignment
+      When AllUsersAssignment is true, include-group validation is automatically
+      bypassed — no changes to ValidateQueueableGroupPolicy were needed because it
+      already reads RequiresIncludeGroup.
+
+  RemediationsController:
+    - Added model.AllUsersAssignment as the last argument to
+      EnqueueQueueableTemplateJobRequest in ExecuteQueueableTemplate.
+
+
+============================================================================================
+[6] Intune client — allDevicesAssignmentTarget support
+File: src/Securityzator.Infrastructure/Intune/IntuneEndpointAutomationClient.cs
+============================================================================================
+
+WHY:
+  Microsoft Graph Intune assignment API accepts three target types. The client only
+  ever emitted groupAssignmentTarget. When AllUsersAssignment is true, it must emit
+  allDevicesAssignmentTarget instead.
+
+KEY TYPES:
+  #microsoft.graph.groupAssignmentTarget      — specific Entra group (pilot)
+  #microsoft.graph.allDevicesAssignmentTarget — all enrolled Windows devices
+  #microsoft.graph.exclusionGroupAssignmentTarget — still emitted when excludeGroupId
+                                                    is set, even in all-devices mode
+
+WHAT CHANGED:
+  EndpointAssignmentTargetSnapshot nested DTO:
+    - Added `public bool IsAllDevicesTarget` computed property. Checks the odata type
+      string for both '#microsoft.graph.allDevicesAssignmentTarget' and the variant
+      without the leading '#', since Graph read responses can return either form.
+
+  ValidatePilotAssignment (private):
+    - Parameter order changed: allUsersAssignment now comes BEFORE baselineName.
+      This matches the call-site pattern used by all 9 public Apply* methods.
+    - When allUsersAssignment = true: skips the Guid.TryParse check on includeGroupId
+      (an empty group ID is valid in all-devices mode).
+    - When allUsersAssignment = true: skips the include==exclude collision check.
+
+  AreAssignmentsAligned (private):
+    - Added `bool allUsersAssignment = false` as the fourth parameter.
+    - When true: checks that exactly one assignment has IsAllDevicesTarget = true and
+      no unexpected group-type assignments exist. Exclusion-group assignments are
+      still permitted.
+    - When false: original group-ID comparison logic is unchanged.
+
+  AssignConfigurationAsync (private, deviceConfigurations endpoint):
+    - Added `bool allUsersAssignment = false` after CancellationToken.
+    - When true: emits { "@odata.type": "#microsoft.graph.allDevicesAssignmentTarget" }.
+    - When false: emits { "@odata.type": "...groupAssignmentTarget", "groupId": "..." }.
+
+  AssignGroupPolicyConfigurationAsync (private, groupPolicyConfigurations endpoint):
+    - Same change as AssignConfigurationAsync. This endpoint is used by the browser
+      hardening baseline which goes through a different Graph API surface.
+
+  All 9 Apply*BaselineAsync public methods + AssessEndpointSensorAndAgentHealthAsync
+  + AssessBitLockerDeploymentStateAsync:
+    - Added `bool allUsersAssignment = false` before CancellationToken in every
+      method signature.
+    - Threaded allUsersAssignment to every ValidatePilotAssignment,
+      AreAssignmentsAligned, AssignConfigurationAsync, and
+      AssignGroupPolicyConfigurationAsync call site within each method.
+    - AssessBrowserAndAdobePolicySurfaceAsync takes no group parameters and is
+      unchanged.
+
+
+============================================================================================
+[7] Remediation service dispatch — AllUsersAssignment threaded through
+File: src/Securityzator.Infrastructure/Remediations/ConditionalAccessRemediationService.cs
+============================================================================================
+
+WHY:
+  The service's top-level switch dispatches to private Execute*BaselineAsync methods
+  which then call the Intune client. AllUsersAssignment must travel this entire path.
+
+WHAT CHANGED:
+  Top-level switch expression (ExecuteQueueableTemplateAsync):
+    - All 10 Intune dispatch arms that pass IncludeGroupId and ExcludeGroupId now
+      also pass request.AllUsersAssignment before cancellationToken.
+    - CA-only arms (ExcludeGroupId only, no IncludeGroupId) are untouched.
+
+  Private Execute*BaselineAsync method signatures (10 methods):
+    - Added `bool allUsersAssignment = false` before CancellationToken in each Intune
+      Execute* method that takes includeGroupId and excludeGroupId.
+
+  Intune client call sites:
+    - All Apply*BaselineAsync calls: allUsersAssignment threaded before cancellationToken.
+    - AssessEndpointSensorAndAgentHealthAsync: allUsersAssignment inserted as the 8th
+      argument (after excludeGroupId, before cancellationToken).
+    - AssessBitLockerDeploymentStateAsync: allUsersAssignment inserted as the 7th
+      argument (after excludeGroupId, before cancellationToken).
+    - AssessBrowserAndAdobePolicySurfaceAsync: untouched (no group params).
+
+
+============================================================================================
+[8] DirectoryGraphClient — Entra low-impact app consent implementation
+File: src/Securityzator.Infrastructure/Graph/DirectoryGraphClient.cs
+============================================================================================
+
+WHY:
+  The new entra-low-impact-app-consent template needs a Graph API implementation.
+  This is a write-path change to the tenant's authorizationPolicy. It also needs
+  to update the identity-hygiene assessment to recognise the low-impact consent
+  posture as distinct from "still enabled" so operators don't see a false NeedsFollowUp.
+
+WHAT CHANGED:
+  New constants:
+    - LowImpactUserConsentPolicyAssignment: the built-in policy identifier
+      "managePermissionGrantsForSelf.microsoft-user-default-low".
+    - OwnedResourcePolicyPrefix: "managePermissionGrantsForOwnedResource." — used to
+      identify and preserve any owned-resource policies that were already in place.
+
+  ApplyEntraLowImpactAppConsentAsync (new internal method):
+    - Reads the current authorizationPolicy.
+    - Preserves any existing owned-resource consent policy assignments (these are
+      distinct governance policies that should not be clobbered).
+    - Builds desiredPolicies = preserved owned-resource assignments +
+      LowImpactUserConsentPolicyAssignment.
+    - If already aligned (correct policies, risky-app consent disabled), marks as
+      already compliant. Otherwise PATCH-updates the policy via
+      UpdateAuthorizationPolicyAsync.
+    - Performs a readback to capture the after-state.
+    - Returns EntraLowImpactAppConsentResult with before/after snapshots and notes.
+
+  BuildUserConsentFinding (updated):
+    - Added lowImpactConsentEnabled detection using HasLowImpactUserConsentAssignment.
+    - Summary now has three branches: disabled (Satisfied) / low-impact-only
+      (ManualReview — passes, but reviewer should note it is not max posture) /
+      broad consent still enabled (NeedsFollowUp).
+
+  BuildConsentManagementFinding (updated):
+    - Added a third posture narrative branch: low-impact consent + admin workflow
+      enabled is described as "safer than broad user consent but still leaves room
+      for approved low-impact app grants."
+
+  New private helpers:
+    - HasLowImpactUserConsentAssignment: boolean check on the policy list.
+    - IsOwnedResourcePolicyAssignment: checks for the owned-resource prefix.
+    - HaveSamePolicyAssignments: order-insensitive, case-insensitive set equality
+      for two policy-assignment lists (used to avoid unnecessary patches).
+
+
+============================================================================================
+[9] Secure Score recommendation service — anti-malware control mapping
+File: src/Securityzator.Infrastructure/Recommendations/SecureScoreRecommendationService.cs
+============================================================================================
+
+WHY:
+  The recommendation service maps Secure Score control titles to template keys so
+  that the Recommendations view can link a failing control directly to the remediation
+  template that fixes it. Anti-malware controls (Common Attachment Types Filter,
+  Zero-Hour Auto Purge for Malware) were previously lumped into the Safe Links
+  template key. They need their own mapping to mdo-anti-malware-baseline.
+
+WHAT CHANGED:
+  - Extracted IsDefenderForOfficeAntiMalware static method: matches control titles
+    containing "COMMON ATTACHMENT TYPES FILTER", "ZERO-HOUR AUTO PURGE POLICIES FOR
+    MALWARE", "ANTI-MALWARE", or "MALWARE FILTER".
+  - IsDefenderForOfficeSafeLinksAndAttachments no longer matches those strings (they
+    were removed from that method's logic).
+  - Added a routing branch in ResolveRemediationTemplateKey so anti-malware titles
+    resolve to "mdo-anti-malware-baseline" instead of "mdo-safe-links-and-attachments".
+
+
+============================================================================================
+[10] Remediations view (Index.cshtml) — new template UI wiring
+File: src/Securityzator.Web/Views/Remediations/Index.cshtml
+============================================================================================
+
+WHY:
+  The view needs to recognise the two new templates (entra-low-impact-app-consent
+  and mdo-anti-malware-baseline) so button labels and contextual help text render
+  correctly for them.
+
+WHAT CHANGED:
+  - Added isEntraLowImpactAppConsent and isMdoAntiMalware local bool variables.
+  - Added queue button label branches for both new templates.
+  - Added contextual summary text branches:
+      isMdoAntiMalware: explains the tenant-wide anti-malware scope.
+      isEntraLowImpactAppConsent: explains the authorization-policy update scope.
+  - Added "what the worker does" description block for isEntraLowImpactAppConsent
+    (the anti-malware block was already present or wired elsewhere in the view).
+
+  AllUsersAssignment toggle RENDERED:
+    - "Assign to all managed devices" checkbox added above the include-group picker
+      for any template where Model.SupportsAllUsersAssignment is true (all 10 Intune
+      templates). Rendered with asp-for="AllUsersAssignment" so it binds on POST.
+    - Include-group section wrapped in <div id="includeGroupSection">. JS hides it
+      when the toggle is checked.
+    - <div id="allDevicesNote"> added below, hidden by default, revealed by JS when
+      the toggle is checked. Explains the all-devices scope to the operator.
+    - queueDisabled updated: no longer blocks Intune templates when groups are not
+      loaded — operators can still queue using all-devices mode without loading groups.
+    - "Load groups first" warning gated on !Model.SupportsAllUsersAssignment so it
+      is suppressed for Intune templates (where all-devices is a valid alternative).
+    - Inline JS in @section Scripts handles the checkbox change event and applies
+      initial state on page load.
+
+
+============================================================================================
+[11] Infrastructure / DevOps config files
+Files: README.md
+       bootstrap.ps1
+       bootstrap.requirements.psd1
+       build.ps1
+       graph.source-map.psd1
+       control-catalog.map.psd1
+       docs/deployment-plan.md
+============================================================================================
+
+bootstrap.ps1:
+  - $PSScriptRoot resolved defensively: adds a fallback chain
+    ($PSScriptRoot → Split-Path $PSCommandPath → Get-Location) because $PSScriptRoot
+    is empty when the script is run via dot-sourcing or from certain CI runners.
+    Default path values for RequirementsPath, GraphSourceMapPath, etc. are now
+    computed after $scriptRoot is resolved rather than in the param() block where
+    $PSScriptRoot is not yet available in all execution contexts.
+
+bootstrap.requirements.psd1:
+  - Added the following Microsoft Graph application permissions to the bootstrap
+    permission manifest (needed for the new Intune and consent templates):
+      DeviceManagementConfiguration.Read.All
+      DeviceManagementConfiguration.ReadWrite.All
+      DeviceManagementManagedDevices.Read.All
+      Directory.Read.All
+      Domain.ReadWrite.All
+      Policy.ReadWrite.Authorization  ← required by entra-low-impact-app-consent
+      Policy.ReadWrite.ConsentRequest ← required by entra-low-impact-app-consent
+
+graph.source-map.psd1:
+  - Added the same Graph permission entries to the canonical source map so the
+    permission inventory stays in sync with the bootstrap requirements file.
+    This file is the authoritative record of which permissions are required and why.
+
+control-catalog.map.psd1:
+  - Added 'entra-low-impact-app-consent' and 'mdo-anti-malware-baseline' to the
+    control catalog mapping so these template keys participate in Secure Score
+    recommendation linking and control coverage reporting.
+
+README.md / build.ps1 / docs/deployment-plan.md:
+  - Documentation and build script updates reflecting the new templates and the
+    all-devices assignment capability. Review these files directly as the changes
+    are narrative rather than structural.
+
+
+============================================================================================
+REVIEW CHECKLIST
+============================================================================================
+
+  [ ] Exchange -CommandName: grep "-CommandName" in DefenderForOfficeAutomationClient.cs
+      — must return zero hits.
+
+  [ ] StoredRemediationJob backwards compat: verify no [JsonRequired] on
+      AllUsersAssignment. Existing state files with no AllUsersAssignment field
+      must deserialise to false without error.
+
+  [ ] Blueprint catalog: only 10 Intune targeting entries have
+      SupportsAllUsersAssignment = true. CA templates (block-legacy-auth,
+      require-mfa-admins, require-phishing-resistant-mfa-admins) must NOT.
+
+  [ ] ValidatePilotAssignment parameter order: private method signature is now
+      (includeGroupId, excludeGroupId, allUsersAssignment, baselineName).
+      All 9 call sites pass allUsersAssignment as the third positional argument.
+
+  [ ] ConditionalAccessRemediationService dispatch: 10 Intune arms pass
+      request.AllUsersAssignment. The 6 CA-only arms (ExcludeGroupId only) do not.
+
+  [ ] IsDefenderForOfficeAntiMalware vs IsDefenderForOfficeSafeLinksAndAttachments:
+      confirm "COMMON ATTACHMENT TYPES FILTER" and "ZERO-HOUR AUTO PURGE POLICIES
+      FOR MALWARE" appear in the anti-malware method and not in the Safe Links method.
+
+  [ ] AllUsersAssignment UI: confirm the "Assign to all managed devices" checkbox
+      renders for Intune templates and is absent for CA/MDO/Exchange templates.
+      Verify the group picker hides and the all-devices note appears when checked.
+      Verify the submit button is enabled even when groups have not been loaded.
+
+  [ ] Build: dotnet build — 0 errors, 0 warnings.

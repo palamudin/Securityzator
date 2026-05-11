@@ -173,6 +173,90 @@ function Test-StringArrayEquals {
     return $leftValue -eq $rightValue
 }
 
+function Get-CommandParameterNames {
+    param([string]$CommandName)
+
+    return @(
+        (Get-Command $CommandName -ErrorAction Stop).Parameters.Keys |
+            ForEach-Object { [string]$_ } |
+            Sort-Object -Unique
+    )
+}
+
+function Test-ParameterSupported {
+    param(
+        [string[]]$ParameterNames,
+        [string]$ParameterName
+    )
+
+    return @($ParameterNames) -contains $ParameterName
+}
+
+function Get-AntiPhishCapabilities {
+    $policyParameterNames = @(
+        (Get-CommandParameterNames -CommandName 'Set-AntiPhishPolicy') +
+        (Get-CommandParameterNames -CommandName 'New-AntiPhishPolicy') |
+            Sort-Object -Unique
+    )
+
+    return [ordered]@{
+        PolicyParameterNames                      = $policyParameterNames
+        SupportsMailboxIntelligenceProtectionAction = Test-ParameterSupported -ParameterNames $policyParameterNames -ParameterName 'MailboxIntelligenceProtectionAction'
+        SupportsImpersonationProtectionState     = Test-ParameterSupported -ParameterNames $policyParameterNames -ParameterName 'ImpersonationProtectionState'
+        SupportsEnableTargetedDomainsProtection  = Test-ParameterSupported -ParameterNames $policyParameterNames -ParameterName 'EnableTargetedDomainsProtection'
+        SupportsTargetedDomainsToProtect         = Test-ParameterSupported -ParameterNames $policyParameterNames -ParameterName 'TargetedDomainsToProtect'
+        SupportsTargetedDomainProtectionAction   = Test-ParameterSupported -ParameterNames $policyParameterNames -ParameterName 'TargetedDomainProtectionAction'
+        SupportsEnableTargetedUserProtection     = Test-ParameterSupported -ParameterNames $policyParameterNames -ParameterName 'EnableTargetedUserProtection'
+        SupportsTargetedUsersToProtect           = Test-ParameterSupported -ParameterNames $policyParameterNames -ParameterName 'TargetedUsersToProtect'
+        SupportsTargetedUserProtectionAction     = Test-ParameterSupported -ParameterNames $policyParameterNames -ParameterName 'TargetedUserProtectionAction'
+    }
+}
+
+function Get-MissingAntiPhishCapabilityDescriptions {
+    param(
+        [hashtable]$Capabilities,
+        [bool]$NeedsProtectedUserCoverage
+    )
+
+    $missing = New-Object System.Collections.Generic.List[string]
+
+    if (-not $Capabilities.SupportsMailboxIntelligenceProtectionAction) {
+        $missing.Add('MailboxIntelligenceProtectionAction')
+    }
+
+    if (-not $Capabilities.SupportsImpersonationProtectionState) {
+        $missing.Add('ImpersonationProtectionState')
+    }
+
+    if (-not $Capabilities.SupportsEnableTargetedDomainsProtection) {
+        $missing.Add('EnableTargetedDomainsProtection')
+    }
+
+    if (-not $Capabilities.SupportsTargetedDomainsToProtect) {
+        $missing.Add('TargetedDomainsToProtect')
+    }
+
+    if (-not $Capabilities.SupportsTargetedDomainProtectionAction) {
+        $missing.Add('TargetedDomainProtectionAction')
+    }
+
+    if ($NeedsProtectedUserCoverage) {
+        if (-not $Capabilities.SupportsEnableTargetedUserProtection) {
+            $missing.Add('EnableTargetedUserProtection')
+        }
+
+        if (-not $Capabilities.SupportsTargetedUsersToProtect) {
+            $missing.Add('TargetedUsersToProtect')
+        }
+
+        if (-not $Capabilities.SupportsTargetedUserProtectionAction) {
+            $missing.Add('TargetedUserProtectionAction')
+        }
+    }
+
+    return @($missing | Sort-Object -Unique)
+}
+
 function Ensure-OrganizationCustomizationEnabled {
     $organizationConfig = Get-OrganizationConfig -ErrorAction Stop
     if ($null -ne $organizationConfig -and [bool]$organizationConfig.IsDehydrated) {
@@ -299,25 +383,69 @@ function Test-AntiPhishCompliance {
     param(
         [hashtable]$Snapshot,
         [string[]]$AcceptedDomains,
-        [string[]]$ProtectedUsersToProtect
+        [string[]]$ProtectedUsersToProtect,
+        [hashtable]$Capabilities
     )
+
+    $canEvaluateTargetedDomainProtection =
+        $Capabilities.SupportsEnableTargetedDomainsProtection -and
+        $Capabilities.SupportsTargetedDomainsToProtect -and
+        $Capabilities.SupportsTargetedDomainProtectionAction
+
+    $canEvaluateTargetedUserProtection =
+        $ProtectedUsersToProtect.Count -gt 0 -and
+        $Capabilities.SupportsEnableTargetedUserProtection -and
+        $Capabilities.SupportsTargetedUsersToProtect -and
+        $Capabilities.SupportsTargetedUserProtectionAction
+
+    $mailboxIntelligenceCompliant =
+        $Snapshot.EnableMailboxIntelligence -eq $true -and
+        $Snapshot.EnableMailboxIntelligenceProtection -eq $true
+
+    if ($Capabilities.SupportsMailboxIntelligenceProtectionAction) {
+        $mailboxIntelligenceCompliant =
+            $mailboxIntelligenceCompliant -and
+            $Snapshot.MailboxIntelligenceProtectionAction -eq 'MoveToJmf'
+    }
+
+    $impersonationStateCompliant = if ($Capabilities.SupportsImpersonationProtectionState) {
+        $Snapshot.ImpersonationProtectionState -eq 'Manual'
+    }
+    else {
+        $true
+    }
+
+    $domainProtectionCompliant =
+        $Snapshot.EnableOrganizationDomainsProtection -eq $true -and
+        $Snapshot.EnableSimilarDomainsSafetyTips -eq $true -and
+        $Snapshot.EnableSimilarUsersSafetyTips -eq $true -and
+        $Snapshot.EnableUnusualCharactersSafetyTips -eq $true -and
+        $Snapshot.PhishThresholdLevel -ge 3 -and
+        (Test-StringArrayEquals -Left $Snapshot.RecipientDomains -Right $AcceptedDomains)
+
+    if ($canEvaluateTargetedDomainProtection) {
+        $domainProtectionCompliant =
+            $domainProtectionCompliant -and
+            $Snapshot.EnableTargetedDomainsProtection -eq $true -and
+            $Snapshot.TargetedDomainProtectionAction -eq 'Quarantine' -and
+            (Test-StringArrayEquals -Left $Snapshot.TargetedDomains -Right $AcceptedDomains)
+    }
+
+    $userProtectionCompliant = $true
+    if ($canEvaluateTargetedUserProtection) {
+        $userProtectionCompliant =
+            $Snapshot.EnableTargetedUserProtection -eq $true -and
+            $Snapshot.TargetedUserProtectionAction -eq 'Quarantine' -and
+            (Test-StringArrayEquals -Left $Snapshot.TargetedUsers -Right $ProtectedUsersToProtect)
+    }
 
     $baseCompliance =
         $Snapshot.PolicyExists -and
         $Snapshot.RuleExists -and
-        $Snapshot.EnableMailboxIntelligence -eq $true -and
-        $Snapshot.EnableMailboxIntelligenceProtection -eq $true -and
-        $Snapshot.MailboxIntelligenceProtectionAction -eq 'MoveToJmf' -and
-        $Snapshot.ImpersonationProtectionState -eq 'Manual' -and
-        $Snapshot.EnableOrganizationDomainsProtection -eq $true -and
-        $Snapshot.EnableTargetedDomainsProtection -eq $true -and
-        $Snapshot.TargetedDomainProtectionAction -eq 'Quarantine' -and
-        $Snapshot.EnableSimilarDomainsSafetyTips -eq $true -and
-        $Snapshot.EnableSimilarUsersSafetyTips -eq $true -and
-        $Snapshot.EnableUnusualCharactersSafetyTips -eq $true -and
-        $Snapshot.PhishThresholdLevel -ge 2 -and
-        (Test-StringArrayEquals -Left $Snapshot.RecipientDomains -Right $AcceptedDomains) -and
-        (Test-StringArrayEquals -Left $Snapshot.TargetedDomains -Right $AcceptedDomains)
+        $mailboxIntelligenceCompliant -and
+        $impersonationStateCompliant -and
+        $domainProtectionCompliant -and
+        $userProtectionCompliant
 
     if (-not $baseCompliance) {
         return $false
@@ -394,6 +522,7 @@ else {
 
 try {
     $organizationCustomizationEnabled = Ensure-OrganizationCustomizationEnabled
+    $antiPhishCapabilities = Get-AntiPhishCapabilities
     $acceptedDomains = @(
         Get-AcceptedDomain -ErrorAction Stop |
             ForEach-Object { [string]$_.DomainName } |
@@ -407,23 +536,49 @@ try {
 
     $beforeAntiPhish = Get-AntiPhishSnapshot -PolicyName $antiPhishPolicyName -RuleName $antiPhishRuleName
     $needsManualFollowUp = $protectedUsersToProtect.Count -eq 0
-    $alreadyCompliant = Test-AntiPhishCompliance -Snapshot $beforeAntiPhish -AcceptedDomains $acceptedDomains -ProtectedUsersToProtect $protectedUsersToProtect
+    $alreadyCompliant = Test-AntiPhishCompliance -Snapshot $beforeAntiPhish -AcceptedDomains $acceptedDomains -ProtectedUsersToProtect $protectedUsersToProtect -Capabilities $antiPhishCapabilities
+
+    $canApplyTargetedDomainProtection =
+        $antiPhishCapabilities.SupportsEnableTargetedDomainsProtection -and
+        $antiPhishCapabilities.SupportsTargetedDomainsToProtect -and
+        $antiPhishCapabilities.SupportsTargetedDomainProtectionAction
+
+    $canApplyTargetedUserProtection =
+        $protectedUsersToProtect.Count -gt 0 -and
+        $antiPhishCapabilities.SupportsEnableTargetedUserProtection -and
+        $antiPhishCapabilities.SupportsTargetedUsersToProtect -and
+        $antiPhishCapabilities.SupportsTargetedUserProtectionAction
 
     if (-not $alreadyCompliant) {
         $policyParameters = @{
             EnableMailboxIntelligence = $true
             EnableMailboxIntelligenceProtection = $true
-            MailboxIntelligenceProtectionAction = 'MoveToJmf'
-            ImpersonationProtectionState = 'Manual'
             EnableOrganizationDomainsProtection = $true
-            EnableTargetedDomainsProtection = $true
-            TargetedDomainsToProtect = $acceptedDomains
-            TargetedDomainProtectionAction = 'Quarantine'
             EnableSimilarDomainsSafetyTips = $true
             EnableSimilarUsersSafetyTips = $true
             EnableUnusualCharactersSafetyTips = $true
-            PhishThresholdLevel = 2
+            PhishThresholdLevel = 3
             ErrorAction = 'Stop'
+        }
+
+        if ($antiPhishCapabilities.SupportsMailboxIntelligenceProtectionAction) {
+            $policyParameters['MailboxIntelligenceProtectionAction'] = 'MoveToJmf'
+        }
+
+        if ($antiPhishCapabilities.SupportsImpersonationProtectionState) {
+            $policyParameters['ImpersonationProtectionState'] = 'Manual'
+        }
+
+        if ($canApplyTargetedDomainProtection) {
+            $policyParameters['EnableTargetedDomainsProtection'] = $true
+            $policyParameters['TargetedDomainsToProtect'] = $acceptedDomains
+            $policyParameters['TargetedDomainProtectionAction'] = 'Quarantine'
+        }
+
+        if ($canApplyTargetedUserProtection) {
+            $policyParameters['EnableTargetedUserProtection'] = $true
+            $policyParameters['TargetedUsersToProtect'] = $protectedUsersToProtect
+            $policyParameters['TargetedUserProtectionAction'] = 'Quarantine'
         }
 
         if ($beforeAntiPhish.PolicyExists) {
@@ -458,10 +613,8 @@ try {
     }
 
     $appliedAntiPhish = Get-AntiPhishSnapshot -PolicyName $antiPhishPolicyName -RuleName $antiPhishRuleName
-    if ($protectedUsersToProtect.Count -gt 0) {
-        $needsManualFollowUp = -not $appliedAntiPhish.EnableTargetedUserProtection -or $appliedAntiPhish.TargetedUsers.Count -eq 0
-    }
     $notes = New-Object System.Collections.Generic.List[string]
+    $missingCapabilities = Get-MissingAntiPhishCapabilityDescriptions -Capabilities $antiPhishCapabilities -NeedsProtectedUserCoverage ($protectedUsersToProtect.Count -gt 0)
 
     if ($organizationCustomizationEnabled) {
         $notes.Add("Exchange Online organization customization was enabled automatically before the anti-phish baseline was applied.")
@@ -471,8 +624,18 @@ try {
         $notes.Add("Protected-user discovery warning: $protectedUserDiscoveryError")
     }
 
-    if ($needsManualFollowUp) {
-        $notes.Add("Targeted user impersonation protection still needs operator review. This session can harden mailbox intelligence, domain impersonation, and safety tips, but the targeted-user impersonation parameters are not currently being applied automatically in this helper.")
+    if ($missingCapabilities.Count -gt 0) {
+        $needsManualFollowUp = $true
+        $notes.Add("This Exchange session does not expose the full anti-phish parameter surface. Missing parameters: $($missingCapabilities -join ', '). Use a fuller Exchange Online PowerShell session or the Defender portal for the missing impersonation settings.")
+    }
+
+    if ($protectedUsersToProtect.Count -eq 0) {
+        $needsManualFollowUp = $true
+        $notes.Add("Protected-user discovery did not return any privileged accounts to seed targeted user impersonation protection.")
+    }
+    elseif (-not $canApplyTargetedUserProtection -or -not $appliedAntiPhish.EnableTargetedUserProtection -or $appliedAntiPhish.TargetedUsers.Count -eq 0) {
+        $needsManualFollowUp = $true
+        $notes.Add("Targeted user impersonation protection still needs operator review. This helper hardened mailbox intelligence, recipient scope, and available impersonation controls, but the protected-user seed list was not fully applied in the current Exchange session.")
     }
 
     $notes.Add("Phishing ZAP remains covered through the Defender for Office spam baseline where PhishZapEnabled is managed.")

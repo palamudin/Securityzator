@@ -89,7 +89,8 @@ public class RemediationsController : Controller
                 model.EffectiveLaunchMode,
                 model.TemplateKey,
                 model.IncludeGroupId,
-                model.ExcludeGroupId),
+                model.ExcludeGroupId,
+                model.AllUsersAssignment),
             cancellationToken);
 
         TempData["StatusMessage"] =

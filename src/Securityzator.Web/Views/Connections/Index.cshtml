@@ -106,13 +106,11 @@
 }
 
 <section class="content-section">
-    <div class="section-heading">
-        <div>
-            <span class="eyebrow">Milestone 6 hardening slice</span>
-            <h1>Azure connection management</h1>
-            <p class="section-copy">Saved tenant profiles now carry Graph validation, secret-rotation posture, Entra daily-use write readiness, Teams admin automation readiness, and optional Windows automation certificate readiness so operators can see whether the backend is ready for both current Graph flows and the next Microsoft 365 admin providers.</p>
+    <div class="page-header">
+        <h1 class="page-title">Connections</h1>
+        <div class="page-actions">
+            <span class="shell-pill">@Model.WorkspaceName</span>
         </div>
-        <div class="shell-pill">@Model.WorkspaceName</div>
     </div>
 
     @if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
@@ -125,11 +123,11 @@
         <div class="alert-shell error">@Model.ErrorMessage</div>
     }
 
-    <div class="split-layout form-layout">
+    <div class="row">
+        <div class="col-lg-8">
         <article class="info-card">
-            <div class="card-kicker">Operator @Model.OperatorDisplayName</div>
-            <h2>@(Model.IsEditMode ? "Edit connection profile" : "Create a connection profile")</h2>
-            <p class="muted-note">Use a dedicated Azure app registration for this tenant. Saved secrets stay server-side and are only replaceable, never re-displayed. Add an automation certificate when you want to prepare this tenant for Exchange, SharePoint, Purview, or future PowerShell-backed providers. Teams meeting automation also needs Microsoft Graph <code>Organization.Read.All</code> plus a Microsoft Entra admin role assignment such as Teams Administrator. The declared license profile below is the current operator view of what this tenant is entitled to, so recommendation and playbook screens can separate true blockers from simply unsupported SKUs.</p>
+            <div class="card-kicker">@(Model.IsEditMode ? "Edit connection profile" : "New connection")</div>
+            <h2>@(Model.IsEditMode ? Model.DisplayName : "Create a connection profile")</h2>
 
             <form asp-action="Save" method="post" class="stack-form">
                 @Html.AntiForgeryToken()
@@ -237,34 +235,13 @@
             </form>
         </article>
 
-        <article class="info-card">
-            <div class="card-kicker">Connection record</div>
-            <h2>Required fields</h2>
-            <div class="field-list">
-                @foreach (var field in Model.Blueprint!.ConnectionFields)
-                {
-                    <div class="field-row">
-                        <div>
-                            <div class="field-label">@field.Label</div>
-                            <div class="field-help">@field.HelpText</div>
-                        </div>
-                        <div class="field-meta">
-                            <span>@field.Placeholder</span>
-                            <span>@(field.IsSecret ? "Protected" : "Visible")</span>
-                        </div>
-                    </div>
-                }
-            </div>
-        </article>
+        </div>
     </div>
 </section>
 
 <section class="content-section">
-    <div class="section-heading">
-        <div>
-            <span class="eyebrow">Saved profiles</span>
-            <h2>Connection records for this workspace</h2>
-        </div>
+    <div class="page-header mt-4">
+        <h2 class="page-title" style="font-size:1.1rem;">Saved profiles</h2>
     </div>
 
     @if (!Model.Connections.Any())
@@ -368,7 +345,6 @@
                                 <div class="meta-label">Entra daily-use automation</div>
                                 <div class="meta-value">
                                     <span class="status-badge @GetCapabilityClass(connection.CanManageEntraDailyUseHardening)">Daily-use hardening: @GetCapabilityLabel(connection.CanManageEntraDailyUseHardening)</span>
-                                    <div class="table-subtext">Checks whether this app can update authorization policy, admin consent workflow, and default domain password-expiration settings.</div>
                                 </div>
                             </div>
                         </div>
@@ -406,7 +382,7 @@
                                     <span class="status-badge @GetAutomationCertificateClass(connection.AutomationCertificateStatus)">@GetAutomationCertificateLabel(connection.AutomationCertificateStatus)</span>
                                     @if (string.IsNullOrWhiteSpace(connection.AutomationCertificateThumbprint))
                                     {
-                                        <div class="table-subtext">Optional today. Add this when you want to prepare Exchange, SharePoint, Purview, or other Windows-admin providers.</div>
+                                        <div class="table-subtext">Not configured</div>
                                     }
                                     else
                                     {

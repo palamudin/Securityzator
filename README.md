@@ -72,6 +72,8 @@ Start here if you want the top-down picture:
 - [Deployment Plan](docs/deployment-plan.md)
 - [Requirements](requirements.txt)
 - [Permissions Topdown Review](docs/permissions-topdown.md)
+- [Tenant Shakedown Runbook](docs/runbooks/tenant-shakedown.md)
+- [Tenant Shakedown Golden Guide](docs/runbooks/tenant-shakedown-golden-guide.md)
 - [Milestones](docs/milestones.md)
 - [Architecture Notes For IIS](docs/architecture-iis.md)
 - [Microsoft Graph Source Map Workflow](docs/microsoft-graph-source-map.md)

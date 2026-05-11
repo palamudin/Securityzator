@@ -15,6 +15,7 @@
     var isEntraRiskPolicies = string.Equals(template.Key, "entra-risk-policies", StringComparison.OrdinalIgnoreCase);
     var isEntraIdentityHygiene = string.Equals(template.Key, "entra-identity-hygiene-baseline", StringComparison.OrdinalIgnoreCase);
     var isEntraDailyUseHardening = string.Equals(template.Key, "entra-daily-use-hardening", StringComparison.OrdinalIgnoreCase);
+    var isEntraLowImpactAppConsent = string.Equals(template.Key, "entra-low-impact-app-consent", StringComparison.OrdinalIgnoreCase);
     var isRequireMfaGuestAccess = string.Equals(template.Key, "require-mfa-guest-access", StringComparison.OrdinalIgnoreCase);
     var isRequireMfaAdminPortals = string.Equals(template.Key, "require-mfa-admin-portals", StringComparison.OrdinalIgnoreCase);
     var isRequireMfaAzureManagement = string.Equals(template.Key, "require-mfa-azure-management", StringComparison.OrdinalIgnoreCase);
@@ -22,6 +23,7 @@
     var isRequireMfaRiskySignIns = string.Equals(template.Key, "require-mfa-risky-sign-ins", StringComparison.OrdinalIgnoreCase);
     var isRequirePasswordChangeHighRiskUsers = string.Equals(template.Key, "require-password-change-high-risk-users", StringComparison.OrdinalIgnoreCase);
     var isRequirePhishingResistantAdmins = string.Equals(template.Key, "require-phishing-resistant-mfa-admins", StringComparison.OrdinalIgnoreCase);
+    var isMdoAntiMalware = string.Equals(template.Key, "mdo-anti-malware-baseline", StringComparison.OrdinalIgnoreCase);
     var isMdoSafeLinksAndAttachments = string.Equals(template.Key, "mdo-safe-links-and-attachments", StringComparison.OrdinalIgnoreCase);
     var isMdoSpamAndForwarding = string.Equals(template.Key, "mdo-spam-and-forwarding-baseline", StringComparison.OrdinalIgnoreCase);
     var isTeamsMeetingHardening = string.Equals(template.Key, "teams-meeting-hardening", StringComparison.OrdinalIgnoreCase);
@@ -38,7 +40,7 @@
     var isDefenderEndpointOsSecurityBaseline = string.Equals(template.Key, "defender-endpoint-os-security-baseline", StringComparison.OrdinalIgnoreCase);
     var hasQueueForm = template.SupportsQueueExecution;
     var queueAction = "ExecuteQueueableTemplate";
-    var queueDisabled = !Model.HasSelectedConnection || (Model.UsesTenantGroups && !Model.HasAvailableGroups);
+    var queueDisabled = !Model.HasSelectedConnection || (!Model.SupportsAllUsersAssignment && Model.UsesTenantGroups && !Model.HasAvailableGroups);
     var isEnabledLaunch = Model.EffectiveLaunchMode == RemediationLaunchMode.Enabled;
     var isReportOnlyLaunch = Model.EffectiveLaunchMode == RemediationLaunchMode.ReportOnly;
     var launchModeLabel = isEnabledLaunch
@@ -58,6 +60,8 @@
                     ? "Queue Entra admin and consent hygiene assessment"
                 : isEntraDailyUseHardening
                     ? "Queue Entra daily-use consent and password hardening"
+                : isEntraLowImpactAppConsent
+                    ? "Queue Entra low-impact app consent"
                 : isRequireMfaGuestAccess
                     ? $"Queue {launchModeLabel} require MFA for guest access"
                     : isRequireMfaAdminPortals
@@ -70,8 +74,10 @@
                                 ? $"Queue {launchModeLabel} require MFA for risky sign-ins"
                             : isRequirePasswordChangeHighRiskUsers
                                 ? $"Queue {launchModeLabel} require password change for high-risk users"
-                            : isMdoSafeLinksAndAttachments
-                                ? "Queue Defender for Office Safe Links and attachments baseline"
+                                : isMdoAntiMalware
+                                    ? "Queue Defender for Office anti-malware baseline"
+                                : isMdoSafeLinksAndAttachments
+                                    ? "Queue Defender for Office Safe Links and attachments baseline"
                             : isMdoSpamAndForwarding
                                 ? "Queue Defender for Office spam and forwarding baseline"
                                 : isDefenderEndpointBitLockerBaseline
@@ -107,6 +113,8 @@
                 ? $"All users are included for the register-security-info user action outside trusted locations, while guest and external users stay excluded by design. Use the exclusion group below for breakglass or staged rollout safety if the tenant needs it before moving beyond {launchModeLabel} mode."
                 : isMdoSafeLinksAndAttachments
                     ? "This playbook updates tenant-wide Defender for Office Safe Links, Safe Attachments, and SharePoint/OneDrive/Teams protection settings directly. Group targeting is not used in this slice."
+                    : isMdoAntiMalware
+                        ? "This playbook updates tenant-wide Defender for Office inbound anti-malware settings directly across all accepted domains. Group targeting is not used in this slice."
                     : isMdoSpamAndForwarding
                         ? "This playbook updates tenant-wide inbound spam filtering and outbound forwarding posture directly across all accepted domains. Group targeting is not used in this slice."
                         : isDefenderEndpointCoreProtection
@@ -133,10 +141,12 @@
                                         ? "This playbook updates the tenant's Global Teams meeting policy directly. Group targeting is not used in this slice."
                                         : isEntraRiskPolicies
                                             ? $"All users are evaluated through the paired risky sign-in and high-risk-user policies in this {launchModeLabel} package, while guests and protected admin roles stay excluded by design. Use the exclusion group below for breakglass or staged rollout safety if the tenant needs it."
-                                            : isEntraIdentityHygiene
-                                                ? "This tenant-wide assessment reads Microsoft Entra policy and directory posture directly. Group targeting is not used in this slice."
+                                                : isEntraIdentityHygiene
+                                                    ? "This tenant-wide assessment reads Microsoft Entra policy and directory posture directly. Group targeting is not used in this slice."
                                                 : isEntraDailyUseHardening
                                                     ? "This tenant-wide hardening slice updates Microsoft Entra tenant settings directly. Group targeting is not used in this slice."
+                                                : isEntraLowImpactAppConsent
+                                                    ? "This tenant-wide hardening slice updates Microsoft Entra authorization-policy settings directly. Group targeting is not used in this slice."
                                             : isRequireMfaRiskySignIns || isRequirePasswordChangeHighRiskUsers
                                                 ? $"All users are included in this {launchModeLabel} policy for risk-driven evaluation, while guests and protected admin roles stay excluded by design. Use the exclusion group below for breakglass or staged rollout safety if the tenant needs it."
                                                 : $"All users are included in this {launchModeLabel} policy. Use the exclusion group below for breakglass or staged rollout safety if the tenant needs it.";
@@ -167,13 +177,11 @@
 }
 
 <section class="content-section">
-    <div class="section-heading">
-        <div>
-            <span class="eyebrow">Runnable catalog</span>
-            <h2>Live quick wins and best-practice controls</h2>
-            <p class="section-copy">These playbooks are executable from the current app even when they do not originate from Secure Score directly, so operators can launch the April 2026 baseline controls from the same queue workflow.</p>
-        </div>
+    <div class="page-header">
+        <h1 class="page-title">Remediations</h1>
+        <div class="page-actions"><span class="shell-pill">@Model.WorkspaceName</span></div>
     </div>
+    <p class="muted-note mb-3">Select a playbook and connection, then queue it for worker execution.</p>
 
     <div class="template-grid">
         @foreach (var runnableTemplate in runnableTemplates)
@@ -201,14 +209,6 @@
 </section>
 
 <section class="content-section">
-    <div class="section-heading">
-        <div>
-            <span class="eyebrow">Milestone 4 live slice</span>
-            <h1>Playbook-based remediation engine</h1>
-            <p class="section-copy">Recommendations can now hand off into a named playbook with tenant context preserved. Runnable quick wins keep their queue flow, while mapped backlog and control-set candidates stay visible as operator-ready work instead of falling back to the prototype.</p>
-        </div>
-        <div class="shell-pill">@Model.WorkspaceName</div>
-    </div>
 
     @if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
     {
@@ -226,39 +226,27 @@
             <h2>@template.Name</h2>
             <p>@template.Summary</p>
             <div class="template-block">
-                <div class="template-heading">Methodology</div>
-                <p>@template.Methodology</p>
-            </div>
-            @if (!string.IsNullOrWhiteSpace(template.ExecutionSurface))
-            {
-                <div class="template-block">
-                    <div class="template-heading">Execution surface</div>
-                    <p>@template.ExecutionSurface</p>
-                </div>
-            }
-            <div class="template-block">
                 <div class="template-heading">Target scope</div>
                 <p><strong>@template.Targeting.TargetSurface</strong></p>
                 <p>@template.Targeting.Summary</p>
             </div>
-            <div class="template-block">
-                <div class="template-heading">Required inputs</div>
-                <ul class="info-list compact">
-                    @foreach (var input in template.RequiredInputs)
-                    {
-                        <li>@input</li>
-                    }
+            <details class="playbook-detail">
+                <summary>Methodology <i class="bi bi-chevron-down"></i></summary>
+                <p class="mt-1">@template.Methodology</p>
+                @if (!string.IsNullOrWhiteSpace(template.ExecutionSurface))
+                {
+                    <p><strong>Execution surface:</strong> @template.ExecutionSurface</p>
+                }
+            </details>
+            <details class="playbook-detail">
+                <summary>Required inputs &amp; steps <i class="bi bi-chevron-down"></i></summary>
+                <ul class="info-list mt-1">
+                    @foreach (var input in template.RequiredInputs) { <li>@input</li> }
                 </ul>
-            </div>
-            <div class="template-block">
-                <div class="template-heading">Execution steps</div>
-                <ol class="step-list">
-                    @foreach (var step in template.Steps)
-                    {
-                        <li>@step</li>
-                    }
+                <ol class="step-list mt-2">
+                    @foreach (var step in template.Steps) { <li>@step</li> }
                 </ol>
-            </div>
+            </details>
             @if (template.HasBlockers)
             {
                 <div class="template-block">
@@ -276,13 +264,6 @@
                 <div class="template-block">
                     <div class="template-heading">Current blockers</div>
                     <p>No explicit blockers are recorded yet, but this playbook is still not promoted into worker execution.</p>
-                </div>
-            }
-            @if (!string.IsNullOrWhiteSpace(template.NextStage))
-            {
-                <div class="template-block">
-                    <div class="template-heading">Next stage</div>
-                    <p>@template.NextStage</p>
                 </div>
             }
             @if (sourceRecommendation is not null)
@@ -309,7 +290,9 @@
         <article class="info-card">
             <div class="card-kicker">Operator @Model.OperatorDisplayName</div>
             <h2>@queueHeading</h2>
-            <p class="muted-note">
+            <details class="playbook-detail">
+                <summary>What will the worker do? <i class="bi bi-chevron-down"></i></summary>
+            <p class="muted-note mt-2">
                 @if (isBlockLegacyAuth)
                 {
                     <text>The worker creates or promotes the policy with the POC naming and the selected <strong>@launchModeLabel</strong> posture: <strong>SS-AUTO | Block legacy authentication</strong>.</text>
@@ -333,6 +316,10 @@
                 else if (isEntraDailyUseHardening)
                 {
                     <text>The worker uses Microsoft Graph authorization policy, admin consent workflow, and default domain update APIs to disable default user consent, enable the admin consent workflow, and keep the default password-expiration posture aligned. This is a live tenant change, not a report-only assessment.</text>
+                }
+                else if (isEntraLowImpactAppConsent)
+                {
+                    <text>The worker uses the Microsoft Graph authorization-policy API to restrict default user consent to low-impact delegated permissions for verified publishers or tenant-registered apps, while preserving owned-resource consent assignments and keeping risky-app consent disabled. This is a live tenant change, not a report-only assessment.</text>
                 }
                 else if (isRequireMfaGuestAccess)
                 {
@@ -423,6 +410,7 @@
                     <text>This playbook is mapped from live Secure Score recommendations already, but it is not automated yet. The goal of this page is to keep the operator workflow and evidence trail intact while we decide what the next safe execution slice should be.</text>
                 }
             </p>
+            </details>
 
             @if (hasQueueForm && !Model.HasConnections)
             {
@@ -484,6 +472,18 @@
                         </div>
                     }
 
+                    @if (Model.SupportsAllUsersAssignment)
+                    {
+                        <div class="form-field">
+                            <div class="form-check">
+                                <input asp-for="AllUsersAssignment" class="form-check-input" id="AllUsersAssignment" />
+                                <label asp-for="AllUsersAssignment" class="form-check-label">Assign to all managed devices</label>
+                            </div>
+                            <div class="table-subtext">When checked, the policy targets all enrolled Windows devices and no pilot group is required. Uncheck to assign to a specific Entra group for staged rollout.</div>
+                        </div>
+                    }
+
+                    <div id="includeGroupSection">
                     @if (Model.RequiresIncludeGroup)
                     {
                         <div class="form-field">
@@ -517,24 +517,17 @@
                         <div class="template-block">
                             <div class="template-heading">Target scope</div>
                             <p>@targetScopeSummary</p>
-                            @*
-                            {
-                            <p>
-                                @(isRequireMfaGuestAccess
-                                    ? "All guest and external users are included in this report-only policy. Use the exclusion group below for staged rollout or emergency exceptions if the tenant needs it."
-                                    : isRequireMfaAdminPortals
-                                        ? "Protected built-in administrator roles are included in this report-only policy when they access Microsoft admin portals. Use the exclusion group below for staged rollout or breakglass safety if the tenant needs it."
-                                        : isSecureSecurityInfoRegistration
-                                            ? "All users are included for the register-security-info user action outside trusted locations, while guest and external users stay excluded by design. Use the exclusion group below for breakglass or staged rollout safety if the tenant needs it."
-                                        : isMdoSafeLinksAndAttachments
-                                            ? "This playbook updates tenant-wide Defender for Office Safe Links, Safe Attachments, and SharePoint/OneDrive/Teams protection settings directly. Group targeting is not used in this slice."
-                                        : isTeamsMeetingHardening
-                                            ? "This playbook updates the tenant’s Global Teams meeting policy directly. Group targeting is not used in this slice."
-                                        : isRequireMfaRiskySignIns || isRequirePasswordChangeHighRiskUsers
-                                            ? "All users are included in this report-only policy for risk-driven evaluation, while guests and protected admin roles stay excluded by design. Use the exclusion group below for breakglass or staged rollout safety if the tenant needs it."
-                                            : "All users are included in this report-only policy. Use the exclusion group below for breakglass or staged rollout safety if the tenant needs it.")
-                            </p>
-                            *@
+                        </div>
+                    }
+                    </div>
+
+                    @if (Model.SupportsAllUsersAssignment)
+                    {
+                        <div id="allDevicesNote" style="display:none;">
+                            <div class="template-block">
+                                <div class="template-heading">Target scope</div>
+                                <p>This baseline will be assigned to all enrolled Windows devices managed by this tenant. No pilot group is selected. Use the exclusion group below if you need to carve out a subset of devices before fleet-wide deployment.</p>
+                            </div>
                         </div>
                     }
 
@@ -610,7 +603,7 @@
                         <span asp-validation-for="ConfirmGroupReview" class="field-validation-error"></span>
                     }
 
-                    @if (Model.UsesTenantGroups && Model.HasSelectedConnection && !Model.HasAvailableGroups)
+                    @if (Model.UsesTenantGroups && Model.HasSelectedConnection && !Model.HasAvailableGroups && !Model.SupportsAllUsersAssignment)
                     {
                         <div class="muted-note">Select a connection and load tenant groups before launching this quick win.</div>
                     }
@@ -658,11 +651,8 @@
 </section>
 
 <section class="content-section">
-    <div class="section-heading">
-        <div>
-            <span class="eyebrow">Recent jobs</span>
-            <h2>Queue activity</h2>
-        </div>
+    <div class="page-header mt-2">
+        <h2 class="page-title" style="font-size:1.05rem;">Recent jobs</h2>
     </div>
 
     @if (!Model.RecentJobs.Any())
@@ -720,4 +710,23 @@
 
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />
+    <script>
+        (function () {
+            var toggle = document.getElementById('AllUsersAssignment');
+            if (!toggle) return;
+            var groupSection = document.getElementById('includeGroupSection');
+            var allDevicesNote = document.getElementById('allDevicesNote');
+            function applyState() {
+                if (toggle.checked) {
+                    groupSection.style.display = 'none';
+                    if (allDevicesNote) allDevicesNote.style.display = '';
+                } else {
+                    groupSection.style.display = '';
+                    if (allDevicesNote) allDevicesNote.style.display = 'none';
+                }
+            }
+            toggle.addEventListener('change', applyState);
+            applyState();
+        })();
+    </script>
 }

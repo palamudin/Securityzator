@@ -27,8 +27,13 @@ public sealed class ConditionalAccessRemediationService : IRemediationService
     private const string EntraDailyUseHardeningTemplateKey = "entra-daily-use-hardening";
     private const string EntraDailyUseHardeningTemplateName = "Entra daily-use consent and password hardening";
     private const string EntraDailyUseHardeningTargetName = "Entra daily-use hardening";
+    private const string EntraLowImpactAppConsentTemplateKey = "entra-low-impact-app-consent";
+    private const string EntraLowImpactAppConsentTemplateName = "Entra low-impact app consent";
+    private const string EntraLowImpactAppConsentTargetName = "Entra low-impact app consent";
     private const string EntraDailyUsePermissionsHint =
         "Grant Graph Policy.ReadWrite.Authorization, Policy.ReadWrite.ConsentRequest, and Domain.ReadWrite.All with admin consent, then validate the connection again.";
+    private const string EntraLowImpactAppConsentPermissionsHint =
+        "Grant Graph Policy.ReadWrite.Authorization with admin consent, then validate the connection again.";
     private const string RequireMfaGuestAccessTemplateKey = "require-mfa-guest-access";
     private const string RequireMfaGuestAccessTemplateName = "Require MFA for guest access";
     private const string RequireMfaGuestAccessPolicyDisplayName = "SS-AUTO | Require MFA for guest access";
@@ -53,6 +58,9 @@ public sealed class ConditionalAccessRemediationService : IRemediationService
     private const string MdoAntiPhishingAndImpersonationTemplateKey = "mdo-anti-phishing-and-impersonation";
     private const string MdoAntiPhishingAndImpersonationTemplateName = "Defender for Office anti-phishing and impersonation";
     private const string MdoAntiPhishingAndImpersonationTargetName = "SS-AUTO | Anti-phish baseline";
+    private const string MdoAntiMalwareTemplateKey = "mdo-anti-malware-baseline";
+    private const string MdoAntiMalwareTemplateName = "Defender for Office anti-malware hardening";
+    private const string MdoAntiMalwareTargetName = "SS-AUTO | Anti-malware baseline";
     private const string MdoSafeLinksAndAttachmentsTemplateKey = "mdo-safe-links-and-attachments";
     private const string MdoSafeLinksAndAttachmentsTemplateName = "Defender for Office Safe Links and attachments";
     private const string MdoSafeLinksAndAttachmentsTargetName = "SS-AUTO | Safe Links baseline + SS-AUTO | Safe Attachments baseline";
@@ -193,6 +201,14 @@ public sealed class ConditionalAccessRemediationService : IRemediationService
                 request.ApprovalJustification,
                 request.LaunchMode,
                 cancellationToken),
+            EntraLowImpactAppConsentTemplateKey => ExecuteEntraLowImpactAppConsentAsync(
+                request.ConnectionId,
+                request.OwnerOperatorId,
+                request.LaunchedByOperatorId,
+                request.LaunchedByOperatorName,
+                request.ApprovalJustification,
+                request.LaunchMode,
+                cancellationToken),
             RequireMfaGuestAccessTemplateKey => ExecuteRequireMfaGuestAccessAsync(
                 request.ConnectionId,
                 request.OwnerOperatorId,
@@ -266,6 +282,14 @@ public sealed class ConditionalAccessRemediationService : IRemediationService
                 request.ApprovalJustification,
                 request.LaunchMode,
                 cancellationToken),
+            MdoAntiMalwareTemplateKey => ExecuteDefenderForOfficeAntiMalwareBaselineAsync(
+                request.ConnectionId,
+                request.OwnerOperatorId,
+                request.LaunchedByOperatorId,
+                request.LaunchedByOperatorName,
+                request.ApprovalJustification,
+                request.LaunchMode,
+                cancellationToken),
             MdoSafeLinksAndAttachmentsTemplateKey => ExecuteDefenderForOfficeSafeLinksAndAttachmentsAsync(
                 request.ConnectionId,
                 request.OwnerOperatorId,
@@ -307,6 +331,7 @@ public sealed class ConditionalAccessRemediationService : IRemediationService
                 request.LaunchMode,
                 request.IncludeGroupId,
                 request.ExcludeGroupId,
+                request.AllUsersAssignment,
                 cancellationToken),
             DefenderEndpointRemoteAccessAndNetworkHardeningTemplateKey => ExecuteDefenderEndpointRemoteAccessAndNetworkHardeningBaselineAsync(
                 request.ConnectionId,
@@ -317,6 +342,7 @@ public sealed class ConditionalAccessRemediationService : IRemediationService
                 request.LaunchMode,
                 request.IncludeGroupId,
                 request.ExcludeGroupId,
+                request.AllUsersAssignment,
                 cancellationToken),
             DefenderEndpointBitLockerTemplateKey => ExecuteDefenderEndpointBitLockerBaselineAsync(
                 request.ConnectionId,
@@ -327,6 +353,7 @@ public sealed class ConditionalAccessRemediationService : IRemediationService
                 request.LaunchMode,
                 request.IncludeGroupId,
                 request.ExcludeGroupId,
+                request.AllUsersAssignment,
                 cancellationToken),
             DefenderEndpointFirewallAndSmartScreenTemplateKey => ExecuteDefenderEndpointFirewallAndSmartScreenBaselineAsync(
                 request.ConnectionId,
@@ -337,6 +364,7 @@ public sealed class ConditionalAccessRemediationService : IRemediationService
                 request.LaunchMode,
                 request.IncludeGroupId,
                 request.ExcludeGroupId,
+                request.AllUsersAssignment,
                 cancellationToken),
             DefenderEndpointBrowserHardeningTemplateKey => ExecuteDefenderEndpointBrowserHardeningBaselineAsync(
                 request.ConnectionId,
@@ -347,6 +375,7 @@ public sealed class ConditionalAccessRemediationService : IRemediationService
                 request.LaunchMode,
                 request.IncludeGroupId,
                 request.ExcludeGroupId,
+                request.AllUsersAssignment,
                 cancellationToken),
             DefenderEndpointBrowserAndAdobePolicySurfaceTemplateKey => ExecuteDefenderEndpointBrowserAndAdobePolicySurfaceAssessmentAsync(
                 request.ConnectionId,
@@ -365,6 +394,7 @@ public sealed class ConditionalAccessRemediationService : IRemediationService
                 request.LaunchMode,
                 request.IncludeGroupId,
                 request.ExcludeGroupId,
+                request.AllUsersAssignment,
                 cancellationToken),
             DefenderEndpointSensorAndAgentHealthTemplateKey => ExecuteDefenderEndpointSensorAndAgentHealthAssessmentAsync(
                 request.ConnectionId,
@@ -375,6 +405,7 @@ public sealed class ConditionalAccessRemediationService : IRemediationService
                 request.LaunchMode,
                 request.IncludeGroupId,
                 request.ExcludeGroupId,
+                request.AllUsersAssignment,
                 cancellationToken),
             DefenderEndpointCoreProtectionTemplateKey => ExecuteDefenderEndpointCoreProtectionBaselineAsync(
                 request.ConnectionId,
@@ -385,6 +416,7 @@ public sealed class ConditionalAccessRemediationService : IRemediationService
                 request.LaunchMode,
                 request.IncludeGroupId,
                 request.ExcludeGroupId,
+                request.AllUsersAssignment,
                 cancellationToken),
             DefenderEndpointOsSecurityBaselineTemplateKey => ExecuteDefenderEndpointOsSecurityBaselineAsync(
                 request.ConnectionId,
@@ -395,6 +427,7 @@ public sealed class ConditionalAccessRemediationService : IRemediationService
                 request.LaunchMode,
                 request.IncludeGroupId,
                 request.ExcludeGroupId,
+                request.AllUsersAssignment,
                 cancellationToken),
             DefenderEndpointAttackSurfaceReductionTemplateKey => ExecuteDefenderEndpointAttackSurfaceReductionBaselineAsync(
                 request.ConnectionId,
@@ -405,6 +438,7 @@ public sealed class ConditionalAccessRemediationService : IRemediationService
                 request.LaunchMode,
                 request.IncludeGroupId,
                 request.ExcludeGroupId,
+                request.AllUsersAssignment,
                 cancellationToken),
             _ => throw new InvalidOperationException($"Unsupported template key '{request.TemplateKey}'.")
         };
@@ -987,6 +1021,139 @@ public sealed class ConditionalAccessRemediationService : IRemediationService
         }
     }
 
+    private async Task<RemediationExecutionOutcome> ExecuteEntraLowImpactAppConsentAsync(
+        Guid connectionId,
+        Guid ownerOperatorId,
+        Guid launchedByOperatorId,
+        string launchedByOperatorName,
+        string approvalJustification,
+        RemediationLaunchMode launchMode,
+        CancellationToken cancellationToken)
+    {
+        if (launchMode != RemediationLaunchMode.DirectApply)
+        {
+            throw new InvalidOperationException("Entra low-impact app consent only supports direct-apply mode.");
+        }
+
+        var request = new TemplateExecutionRequest(
+            connectionId,
+            ownerOperatorId,
+            launchedByOperatorId,
+            launchedByOperatorName,
+            approvalJustification,
+            launchMode,
+            string.Empty,
+            null);
+        var startedUtc = DateTimeOffset.UtcNow;
+        var logs = new List<string>
+        {
+            "Resolving the saved Azure connection.",
+            "Preparing the Entra low-impact app consent workflow.",
+            $"Approval justification: {NormalizeSummary(approvalJustification)}"
+        };
+
+        try
+        {
+            var connection = await ResolveConnectionAsync(connectionId, ownerOperatorId, true, cancellationToken);
+            var accessToken = await AcquireAccessTokenAsync(connection, cancellationToken);
+            logs.Add("Acquired a Microsoft Graph application token for Entra authorization-policy automation.");
+
+            var result = await _directoryClient.ApplyEntraLowImpactAppConsentAsync(accessToken, cancellationToken);
+
+            logs.Add($"Authorization policy before: {SummarizeAuthorizationPolicy(result.AuthorizationPolicyBefore)}");
+            logs.Add($"Authorization policy after: {SummarizeAuthorizationPolicy(result.AuthorizationPolicyAfter)}");
+            logs.Add($"User consent updated: {result.UserConsentUpdated}.");
+
+            foreach (var preservedPolicy in result.PreservedOwnedResourcePolicies.Where(policy => !string.IsNullOrWhiteSpace(policy)))
+            {
+                logs.Add($"Preserved owned-resource policy: {NormalizeSummary(preservedPolicy)}");
+            }
+
+            foreach (var note in result.Notes.Where(note => !string.IsNullOrWhiteSpace(note)))
+            {
+                logs.Add($"Note: {NormalizeSummary(note)}");
+            }
+
+            var completedUtc = DateTimeOffset.UtcNow;
+            var summary = result.AlreadyCompliant
+                ? "Entra low-impact app consent was already aligned with the Securityzator baseline."
+                : "Restricted default user consent to low-impact permissions for verified publishers or tenant-registered apps while preserving owned-resource consent assignments.";
+            var runStatus = result.AlreadyCompliant ? RemediationRunStatus.Skipped : RemediationRunStatus.Succeeded;
+            var policyState = result.AlreadyCompliant ? "AlreadyCompliant" : "Updated";
+
+            var storedRun = await PersistRunAsync(
+                request,
+                EntraLowImpactAppConsentTemplateKey,
+                EntraLowImpactAppConsentTemplateName,
+                connection.DisplayName,
+                startedUtc,
+                completedUtc,
+                runStatus,
+                summary,
+                null,
+                null,
+                null,
+                EntraLowImpactAppConsentTargetName,
+                policyState,
+                result.AlreadyCompliant,
+                logs,
+                cancellationToken);
+
+            return new RemediationExecutionOutcome(
+                storedRun.Id,
+                EntraLowImpactAppConsentTemplateKey,
+                connectionId,
+                connection.DisplayName,
+                runStatus,
+                true,
+                result.AlreadyCompliant,
+                summary,
+                completedUtc,
+                EntraLowImpactAppConsentTargetName,
+                policyState);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex) when (ex is GraphServiceException or HttpRequestException or InvalidOperationException)
+        {
+            var normalizedFailure = NormalizeSummary(EnhanceEntraLowImpactAppConsentFailure(ex.Message));
+            logs.Add($"Execution failed: {normalizedFailure}");
+
+            var failedRun = await PersistRunAsync(
+                request,
+                EntraLowImpactAppConsentTemplateKey,
+                EntraLowImpactAppConsentTemplateName,
+                string.Empty,
+                startedUtc,
+                DateTimeOffset.UtcNow,
+                RemediationRunStatus.Failed,
+                normalizedFailure,
+                null,
+                null,
+                null,
+                EntraLowImpactAppConsentTargetName,
+                "Failed",
+                false,
+                logs,
+                cancellationToken);
+
+            return new RemediationExecutionOutcome(
+                failedRun.Id,
+                EntraLowImpactAppConsentTemplateKey,
+                connectionId,
+                failedRun.ConnectionDisplayName,
+                RemediationRunStatus.Failed,
+                false,
+                false,
+                $"{EntraLowImpactAppConsentTemplateName} failed. {normalizedFailure}",
+                failedRun.CompletedUtc,
+                EntraLowImpactAppConsentTargetName,
+                "Failed");
+        }
+    }
+
     private async Task<RemediationExecutionOutcome> ExecuteRequireMfaGuestAccessAsync(
         Guid connectionId,
         Guid ownerOperatorId,
@@ -1523,6 +1690,153 @@ public sealed class ConditionalAccessRemediationService : IRemediationService
         }
     }
 
+    private async Task<RemediationExecutionOutcome> ExecuteDefenderForOfficeAntiMalwareBaselineAsync(
+        Guid connectionId,
+        Guid ownerOperatorId,
+        Guid launchedByOperatorId,
+        string launchedByOperatorName,
+        string approvalJustification,
+        RemediationLaunchMode launchMode,
+        CancellationToken cancellationToken)
+    {
+        if (launchMode != RemediationLaunchMode.DirectApply)
+        {
+            throw new InvalidOperationException("Defender for Office anti-malware hardening only supports direct-apply mode.");
+        }
+
+        var request = new TemplateExecutionRequest(
+            connectionId,
+            ownerOperatorId,
+            launchedByOperatorId,
+            launchedByOperatorName,
+            approvalJustification,
+            launchMode,
+            string.Empty,
+            null);
+        var startedUtc = DateTimeOffset.UtcNow;
+        var logs = new List<string>
+        {
+            "Resolving the saved Azure connection.",
+            "Preparing Defender for Office anti-malware baseline automation.",
+            $"Approval justification: {NormalizeSummary(approvalJustification)}"
+        };
+
+        try
+        {
+            var connection = await ResolveConnectionAsync(connectionId, ownerOperatorId, true, cancellationToken);
+
+            if (string.IsNullOrWhiteSpace(connection.AutomationCertificateThumbprint))
+            {
+                throw new InvalidOperationException(
+                    "This connection does not have an automation certificate thumbprint. Save a certificate-backed automation profile before queueing the Defender for Office anti-malware baseline.");
+            }
+
+            logs.Add("Resolved the saved automation certificate metadata for Exchange Online app-only authentication.");
+            var exchangeOrganization = await ResolveExchangeOrganizationAsync(connection, cancellationToken);
+            logs.Add($"Resolved Exchange Online organization identifier '{exchangeOrganization}'.");
+
+            var result = await _defenderForOfficeAutomationClient.ApplyAntiMalwareBaselineAsync(
+                exchangeOrganization,
+                connection.ClientId,
+                connection.AutomationCertificateThumbprint,
+                connection.AutomationCertificateStoreLocation,
+                connection.AutomationCertificateStoreName,
+                cancellationToken);
+
+            logs.Add($"Anti-malware baseline: {SummarizeDefenderForOfficeAntiMalware(result.AntiMalware)}");
+
+            foreach (var note in result.Notes.Where(note => !string.IsNullOrWhiteSpace(note)))
+            {
+                logs.Add($"Note: {NormalizeSummary(note)}");
+            }
+
+            var completedUtc = DateTimeOffset.UtcNow;
+            var summary = result.AlreadyCompliant
+                ? "The Defender for Office anti-malware baseline already matched Securityzator's managed Business Premium baseline."
+                : "Updated Defender for Office anti-malware posture to Securityzator's managed Business Premium baseline.";
+
+            if (result.NeedsManualFollowUp)
+            {
+                summary = $"{summary} Manual follow-up remains for preset-policy precedence or inbound-only scope review.";
+            }
+
+            var policyState = result.AlreadyCompliant
+                ? result.NeedsManualFollowUp ? "AlreadyCompliantWithFollowUp" : "AlreadyCompliant"
+                : result.NeedsManualFollowUp ? "UpdatedWithFollowUp" : "Updated";
+            var runStatus = result.AlreadyCompliant ? RemediationRunStatus.Skipped : RemediationRunStatus.Succeeded;
+            var storedRun = await PersistRunAsync(
+                request,
+                MdoAntiMalwareTemplateKey,
+                MdoAntiMalwareTemplateName,
+                connection.DisplayName,
+                startedUtc,
+                completedUtc,
+                runStatus,
+                summary,
+                null,
+                null,
+                null,
+                MdoAntiMalwareTargetName,
+                policyState,
+                result.AlreadyCompliant,
+                logs,
+                cancellationToken);
+
+            return new RemediationExecutionOutcome(
+                storedRun.Id,
+                MdoAntiMalwareTemplateKey,
+                connectionId,
+                connection.DisplayName,
+                runStatus,
+                true,
+                result.AlreadyCompliant,
+                summary,
+                completedUtc,
+                MdoAntiMalwareTargetName,
+                policyState);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException)
+        {
+            var normalizedFailure = NormalizeExchangeAutomationFailure(ex.Message);
+            logs.Add($"Execution failed: {normalizedFailure}");
+
+            var failedRun = await PersistRunAsync(
+                request,
+                MdoAntiMalwareTemplateKey,
+                MdoAntiMalwareTemplateName,
+                string.Empty,
+                startedUtc,
+                DateTimeOffset.UtcNow,
+                RemediationRunStatus.Failed,
+                normalizedFailure,
+                null,
+                null,
+                null,
+                MdoAntiMalwareTargetName,
+                "Failed",
+                false,
+                logs,
+                cancellationToken);
+
+            return new RemediationExecutionOutcome(
+                failedRun.Id,
+                MdoAntiMalwareTemplateKey,
+                connectionId,
+                failedRun.ConnectionDisplayName,
+                RemediationRunStatus.Failed,
+                false,
+                false,
+                $"{MdoAntiMalwareTemplateName} failed. {normalizedFailure}",
+                failedRun.CompletedUtc,
+                MdoAntiMalwareTargetName,
+                "Failed");
+        }
+    }
+
     private async Task<RemediationExecutionOutcome> ExecuteDefenderForOfficeSpamAndForwardingBaselineAsync(
         Guid connectionId,
         Guid ownerOperatorId,
@@ -1995,7 +2309,8 @@ public sealed class ConditionalAccessRemediationService : IRemediationService
         RemediationLaunchMode launchMode,
         string includeGroupId,
         string? excludeGroupId,
-        CancellationToken cancellationToken)
+        bool allUsersAssignment = false,
+        CancellationToken cancellationToken = default)
     {
         if (launchMode != RemediationLaunchMode.DirectApply)
         {
@@ -2029,6 +2344,7 @@ public sealed class ConditionalAccessRemediationService : IRemediationService
                 accessToken,
                 includeGroupId,
                 excludeGroupId,
+                allUsersAssignment,
                 cancellationToken);
 
             if (result.Before is not null)
@@ -2166,7 +2482,8 @@ public sealed class ConditionalAccessRemediationService : IRemediationService
         RemediationLaunchMode launchMode,
         string includeGroupId,
         string? excludeGroupId,
-        CancellationToken cancellationToken)
+        bool allUsersAssignment = false,
+        CancellationToken cancellationToken = default)
     {
         if (launchMode != RemediationLaunchMode.DirectApply)
         {
@@ -2200,6 +2517,7 @@ public sealed class ConditionalAccessRemediationService : IRemediationService
                 accessToken,
                 includeGroupId,
                 excludeGroupId,
+                allUsersAssignment,
                 cancellationToken);
 
             if (result.Before is not null)
@@ -2337,7 +2655,8 @@ public sealed class ConditionalAccessRemediationService : IRemediationService
         RemediationLaunchMode launchMode,
         string includeGroupId,
         string? excludeGroupId,
-        CancellationToken cancellationToken)
+        bool allUsersAssignment = false,
+        CancellationToken cancellationToken = default)
     {
         if (launchMode != RemediationLaunchMode.DirectApply)
         {
@@ -2371,6 +2690,7 @@ public sealed class ConditionalAccessRemediationService : IRemediationService
                 accessToken,
                 includeGroupId,
                 excludeGroupId,
+                allUsersAssignment,
                 cancellationToken);
 
             if (result.Before is not null)
@@ -2633,7 +2953,8 @@ public sealed class ConditionalAccessRemediationService : IRemediationService
         RemediationLaunchMode launchMode,
         string includeGroupId,
         string? excludeGroupId,
-        CancellationToken cancellationToken)
+        bool allUsersAssignment = false,
+        CancellationToken cancellationToken = default)
     {
         if (launchMode != RemediationLaunchMode.DirectApply)
         {
@@ -2667,6 +2988,7 @@ public sealed class ConditionalAccessRemediationService : IRemediationService
                 accessToken,
                 includeGroupId,
                 excludeGroupId,
+                allUsersAssignment,
                 cancellationToken);
 
             if (result.Before is not null)
@@ -2719,6 +3041,7 @@ public sealed class ConditionalAccessRemediationService : IRemediationService
                     excludeUserIds,
                     excludeDeviceIds,
                     excludeGroupId,
+                    allUsersAssignment,
                     cancellationToken);
 
                 logs.Add($"Scoped Windows devices assessed: {assessmentResult.ScopedDeviceCount}.");
@@ -2877,7 +3200,8 @@ public sealed class ConditionalAccessRemediationService : IRemediationService
         RemediationLaunchMode launchMode,
         string includeGroupId,
         string? excludeGroupId,
-        CancellationToken cancellationToken)
+        bool allUsersAssignment = false,
+        CancellationToken cancellationToken = default)
     {
         if (launchMode != RemediationLaunchMode.DirectApply)
         {
@@ -2911,6 +3235,7 @@ public sealed class ConditionalAccessRemediationService : IRemediationService
                 accessToken,
                 includeGroupId,
                 excludeGroupId,
+                allUsersAssignment,
                 cancellationToken);
 
             if (result.Before is not null)
@@ -3038,7 +3363,8 @@ public sealed class ConditionalAccessRemediationService : IRemediationService
         RemediationLaunchMode launchMode,
         string includeGroupId,
         string? excludeGroupId,
-        CancellationToken cancellationToken)
+        bool allUsersAssignment = false,
+        CancellationToken cancellationToken = default)
     {
         if (launchMode != RemediationLaunchMode.ReportOnly)
         {
@@ -3107,6 +3433,7 @@ public sealed class ConditionalAccessRemediationService : IRemediationService
                 excludeUserIds,
                 excludeDeviceIds,
                 excludeGroupId,
+                allUsersAssignment,
                 cancellationToken);
 
             logs.Add($"Scoped Windows devices assessed: {result.ScopedDeviceCount}.");
@@ -3251,7 +3578,8 @@ public sealed class ConditionalAccessRemediationService : IRemediationService
         RemediationLaunchMode launchMode,
         string includeGroupId,
         string? excludeGroupId,
-        CancellationToken cancellationToken)
+        bool allUsersAssignment = false,
+        CancellationToken cancellationToken = default)
     {
         if (launchMode != RemediationLaunchMode.DirectApply)
         {
@@ -3285,6 +3613,7 @@ public sealed class ConditionalAccessRemediationService : IRemediationService
                 accessToken,
                 includeGroupId,
                 excludeGroupId,
+                allUsersAssignment,
                 cancellationToken);
 
             if (result.Before is not null)
@@ -3412,7 +3741,8 @@ public sealed class ConditionalAccessRemediationService : IRemediationService
         RemediationLaunchMode launchMode,
         string includeGroupId,
         string? excludeGroupId,
-        CancellationToken cancellationToken)
+        bool allUsersAssignment = false,
+        CancellationToken cancellationToken = default)
     {
         if (launchMode != RemediationLaunchMode.DirectApply)
         {
@@ -3446,6 +3776,7 @@ public sealed class ConditionalAccessRemediationService : IRemediationService
                 accessToken,
                 includeGroupId,
                 excludeGroupId,
+                allUsersAssignment,
                 cancellationToken);
 
             if (result.Before is not null)
@@ -3573,7 +3904,8 @@ public sealed class ConditionalAccessRemediationService : IRemediationService
         RemediationLaunchMode launchMode,
         string includeGroupId,
         string? excludeGroupId,
-        CancellationToken cancellationToken)
+        bool allUsersAssignment = false,
+        CancellationToken cancellationToken = default)
     {
         if (launchMode != RemediationLaunchMode.DirectApply)
         {
@@ -3607,6 +3939,7 @@ public sealed class ConditionalAccessRemediationService : IRemediationService
                 accessToken,
                 includeGroupId,
                 excludeGroupId,
+                allUsersAssignment,
                 cancellationToken);
 
             if (result.Before is not null)
@@ -3734,7 +4067,8 @@ public sealed class ConditionalAccessRemediationService : IRemediationService
         RemediationLaunchMode launchMode,
         string includeGroupId,
         string? excludeGroupId,
-        CancellationToken cancellationToken)
+        bool allUsersAssignment = false,
+        CancellationToken cancellationToken = default)
     {
         if (launchMode != RemediationLaunchMode.DirectApply)
         {
@@ -3768,6 +4102,7 @@ public sealed class ConditionalAccessRemediationService : IRemediationService
                 accessToken,
                 includeGroupId,
                 excludeGroupId,
+                allUsersAssignment,
                 cancellationToken);
 
             if (result.Before is not null)
@@ -3980,6 +4315,42 @@ public sealed class ConditionalAccessRemediationService : IRemediationService
                         cancellationToken);
                     logs.Add($"Updated existing policy '{promotedPolicy.DisplayName}' to state '{promotedPolicy.State}'.");
 
+                    if (!ConditionalAccessStateMatches(promotedPolicy.State, desiredPolicyState))
+                    {
+                        logs.Add($"Readback mismatch: requested state '{desiredPolicyState}', but Microsoft Graph returned '{promotedPolicy.State}'.");
+
+                        var failedPromotionRun = await PersistRunAsync(
+                            request,
+                            templateKey,
+                            templateName,
+                            connection.DisplayName,
+                            startedUtc,
+                            DateTimeOffset.UtcNow,
+                            RemediationRunStatus.Failed,
+                            $"Securityzator requested '{desiredPolicyState}' for '{policyDisplayName}', but Graph readback remained '{promotedPolicy.State}'.",
+                            includeGroupName,
+                            normalizedExcludeGroupId,
+                            excludeGroupName,
+                            promotedPolicy.Id,
+                            promotedPolicy.State,
+                            false,
+                            logs,
+                            cancellationToken);
+
+                        return new RemediationExecutionOutcome(
+                            failedPromotionRun.Id,
+                            templateKey,
+                            request.ConnectionId,
+                            connection.DisplayName,
+                            RemediationRunStatus.Failed,
+                            false,
+                            false,
+                            $"Requested enabled state for '{policyDisplayName}' on '{connection.DisplayName}', but Graph read back '{promotedPolicy.State}'.",
+                            failedPromotionRun.CompletedUtc,
+                            promotedPolicy.Id,
+                            promotedPolicy.State);
+                    }
+
                     var promotedRun = await PersistRunAsync(
                         request,
                         templateKey,
@@ -4053,6 +4424,42 @@ public sealed class ConditionalAccessRemediationService : IRemediationService
                 normalizedExcludeGroupId,
                 cancellationToken);
             logs.Add($"Created policy '{createdPolicy.DisplayName}' with id '{createdPolicy.Id}' in state '{createdPolicy.State}'.");
+
+            if (!ConditionalAccessStateMatches(createdPolicy.State, desiredPolicyState))
+            {
+                logs.Add($"Readback mismatch: requested state '{desiredPolicyState}', but Microsoft Graph returned '{createdPolicy.State}'.");
+
+                var failedCreationRun = await PersistRunAsync(
+                    request,
+                    templateKey,
+                    templateName,
+                    connection.DisplayName,
+                    startedUtc,
+                    DateTimeOffset.UtcNow,
+                    RemediationRunStatus.Failed,
+                    $"Securityzator requested '{desiredPolicyState}' for '{policyDisplayName}', but Graph created the policy in '{createdPolicy.State}'.",
+                    includeGroupName,
+                    normalizedExcludeGroupId,
+                    excludeGroupName,
+                    createdPolicy.Id,
+                    createdPolicy.State,
+                    false,
+                    logs,
+                    cancellationToken);
+
+                return new RemediationExecutionOutcome(
+                    failedCreationRun.Id,
+                    templateKey,
+                    request.ConnectionId,
+                    connection.DisplayName,
+                    RemediationRunStatus.Failed,
+                    false,
+                    false,
+                    $"Requested {DescribeLaunchMode(request.LaunchMode).ToLowerInvariant()} state for '{policyDisplayName}' on '{connection.DisplayName}', but Graph created '{createdPolicy.State}'.",
+                    failedCreationRun.CompletedUtc,
+                    createdPolicy.Id,
+                    createdPolicy.State);
+            }
 
             var succeededRun = await PersistRunAsync(
                 request,
@@ -4361,6 +4768,16 @@ public sealed class ConditionalAccessRemediationService : IRemediationService
             : normalizedFailure;
     }
 
+    private static string EnhanceEntraLowImpactAppConsentFailure(string failure)
+    {
+        var normalizedFailure = NormalizeSummary(failure);
+
+        return normalizedFailure.Contains("Authorization_RequestDenied", StringComparison.OrdinalIgnoreCase)
+               || normalizedFailure.Contains("Insufficient privileges", StringComparison.OrdinalIgnoreCase)
+            ? $"{normalizedFailure} {EntraLowImpactAppConsentPermissionsHint}"
+            : normalizedFailure;
+    }
+
     private static string SummarizeAuthorizationPolicy(
         DirectoryGraphClient.GraphAuthorizationPolicy policy)
     {
@@ -4493,19 +4910,25 @@ public sealed class ConditionalAccessRemediationService : IRemediationService
     private static string SummarizeDefenderForOfficeSafeLinks(
         DefenderForOfficeAutomationClient.DefenderForOfficeSafeLinksSnapshot snapshot)
     {
-        return $"PolicyExists={snapshot.PolicyExists}; RuleExists={snapshot.RuleExists}; Email={snapshot.EnableSafeLinksForEmail}; Teams={snapshot.EnableSafeLinksForTeams}; Office={snapshot.EnableSafeLinksForOffice}; TrackClicks={snapshot.TrackClicks}; AllowClickThrough={snapshot.AllowClickThrough}; InternalSenders={snapshot.EnableForInternalSenders}; DomainCount={snapshot.RecipientDomains.Count}";
+        return $"PolicyExists={snapshot.PolicyExists}; RuleExists={snapshot.RuleExists}; Email={snapshot.EnableSafeLinksForEmail}; Teams={snapshot.EnableSafeLinksForTeams}; Office={snapshot.EnableSafeLinksForOffice}; TrackClicks={snapshot.TrackClicks}; AllowClickThrough={snapshot.AllowClickThrough}; InternalSenders={snapshot.EnableForInternalSenders}; DomainCount={snapshot.RecipientDomains?.Count ?? 0}";
     }
 
     private static string SummarizeDefenderForOfficeSafeAttachments(
         DefenderForOfficeAutomationClient.DefenderForOfficeSafeAttachmentsSnapshot snapshot)
     {
-        return $"PolicyExists={snapshot.PolicyExists}; RuleExists={snapshot.RuleExists}; Enabled={snapshot.Enable}; Action={snapshot.Action}; Redirect={snapshot.Redirect}; DomainCount={snapshot.RecipientDomains.Count}";
+        return $"PolicyExists={snapshot.PolicyExists}; RuleExists={snapshot.RuleExists}; Enabled={snapshot.Enable}; Action={snapshot.Action}; Redirect={snapshot.Redirect}; DomainCount={snapshot.RecipientDomains?.Count ?? 0}";
     }
 
     private static string SummarizeDefenderForOfficeAntiPhish(
         DefenderForOfficeAutomationClient.DefenderForOfficeAntiPhishSnapshot snapshot)
     {
-        return $"PolicyExists={snapshot.PolicyExists}; RuleExists={snapshot.RuleExists}; RuleState={snapshot.RuleState}; MailboxIntelligence={snapshot.EnableMailboxIntelligence}; MailboxIntelligenceAction={snapshot.MailboxIntelligenceProtectionAction}; DomainProtection={snapshot.EnableTargetedDomainsProtection}; DomainAction={snapshot.TargetedDomainProtectionAction}; UserProtection={snapshot.EnableTargetedUserProtection}; UserAction={snapshot.TargetedUserProtectionAction}; PhishThreshold={snapshot.PhishThresholdLevel}; DomainCount={snapshot.TargetedDomains.Count}; ProtectedUserCount={snapshot.TargetedUsers.Count}";
+        return $"PolicyExists={snapshot.PolicyExists}; RuleExists={snapshot.RuleExists}; RuleState={snapshot.RuleState}; MailboxIntelligence={snapshot.EnableMailboxIntelligence}; MailboxIntelligenceAction={snapshot.MailboxIntelligenceProtectionAction}; DomainProtection={snapshot.EnableTargetedDomainsProtection}; DomainAction={snapshot.TargetedDomainProtectionAction}; UserProtection={snapshot.EnableTargetedUserProtection}; UserAction={snapshot.TargetedUserProtectionAction}; PhishThreshold={snapshot.PhishThresholdLevel}; DomainCount={snapshot.TargetedDomains?.Count ?? 0}; ProtectedUserCount={snapshot.TargetedUsers?.Count ?? 0}";
+    }
+
+    private static string SummarizeDefenderForOfficeAntiMalware(
+        DefenderForOfficeAutomationClient.DefenderForOfficeAntiMalwareSnapshot snapshot)
+    {
+        return $"PolicyExists={snapshot.PolicyExists}; RuleExists={snapshot.RuleExists}; RuleState={snapshot.RuleState}; FileFilter={snapshot.EnableFileFilter}; FileTypeAction={snapshot.FileTypeAction}; ZapEnabled={snapshot.ZapEnabled}; QuarantineTag={snapshot.QuarantineTag}; DomainCount={snapshot.RecipientDomains?.Count ?? 0}";
     }
 
     private static string SummarizeExchangeOrganizationSnapshot(
@@ -4529,19 +4952,19 @@ public sealed class ConditionalAccessRemediationService : IRemediationService
     private static string SummarizeDefenderForOfficeInboundSpam(
         DefenderForOfficeAutomationClient.DefenderForOfficeInboundSpamSnapshot snapshot)
     {
-        return $"PolicyExists={snapshot.PolicyExists}; RuleExists={snapshot.RuleExists}; Spam={snapshot.SpamAction}; HighConfidenceSpam={snapshot.HighConfidenceSpamAction}; Bulk={snapshot.BulkSpamAction}; BulkThreshold={snapshot.BulkThreshold}; PhishZap={snapshot.PhishZapEnabled}; SpamZap={snapshot.SpamZapEnabled}; DomainCount={snapshot.RecipientDomains.Count}; AllowedSenderDomainCount={snapshot.AllowedSenderDomains.Count}";
+        return $"PolicyExists={snapshot.PolicyExists}; RuleExists={snapshot.RuleExists}; Spam={snapshot.SpamAction}; HighConfidenceSpam={snapshot.HighConfidenceSpamAction}; Bulk={snapshot.BulkSpamAction}; BulkThreshold={snapshot.BulkThreshold}; PhishZap={snapshot.PhishZapEnabled}; SpamZap={snapshot.SpamZapEnabled}; DomainCount={snapshot.RecipientDomains?.Count ?? 0}; AllowedSenderDomainCount={snapshot.AllowedSenderDomains?.Count ?? 0}";
     }
 
     private static string SummarizeDefenderForOfficeOutboundSpam(
         DefenderForOfficeAutomationClient.DefenderForOfficeOutboundSpamSnapshot snapshot)
     {
-        return $"PolicyExists={snapshot.PolicyExists}; RuleExists={snapshot.RuleExists}; AutoForwarding={snapshot.AutoForwardingMode}; NotifyOutboundSpam={snapshot.NotifyOutboundSpam}; ExternalPerHour={snapshot.RecipientLimitExternalPerHour}; InternalPerHour={snapshot.RecipientLimitInternalPerHour}; PerDay={snapshot.RecipientLimitPerDay}; ThresholdAction={snapshot.ActionWhenThresholdReached}; SenderDomainCount={snapshot.SenderDomains.Count}";
+        return $"PolicyExists={snapshot.PolicyExists}; RuleExists={snapshot.RuleExists}; AutoForwarding={snapshot.AutoForwardingMode}; NotifyOutboundSpam={snapshot.NotifyOutboundSpam}; ExternalPerHour={snapshot.RecipientLimitExternalPerHour}; InternalPerHour={snapshot.RecipientLimitInternalPerHour}; PerDay={snapshot.RecipientLimitPerDay}; ThresholdAction={snapshot.ActionWhenThresholdReached}; SenderDomainCount={snapshot.SenderDomains?.Count ?? 0}";
     }
 
     private static string SummarizeDefenderForOfficeConnectionFilter(
         DefenderForOfficeAutomationClient.DefenderForOfficeConnectionFilterSnapshot snapshot)
     {
-        return $"PolicyExists={snapshot.PolicyExists}; Name={snapshot.PolicyName}; IpAllowListCount={snapshot.IpAllowList.Count}; ReadbackError={(string.IsNullOrWhiteSpace(snapshot.ReadbackError) ? "None" : snapshot.ReadbackError)}";
+        return $"PolicyExists={snapshot.PolicyExists}; Name={snapshot.PolicyName}; IpAllowListCount={snapshot.IpAllowList?.Count ?? 0}; ReadbackError={(string.IsNullOrWhiteSpace(snapshot.ReadbackError) ? "None" : snapshot.ReadbackError)}";
     }
 
     private static string NormalizeSummary(string value)
@@ -4563,6 +4986,11 @@ public sealed class ConditionalAccessRemediationService : IRemediationService
             RemediationLaunchMode.Enabled => "enabled",
             _ => throw new InvalidOperationException("Direct-apply mode does not map to a Conditional Access policy state.")
         };
+    }
+
+    private static bool ConditionalAccessStateMatches(string actualState, string desiredState)
+    {
+        return string.Equals(actualState?.Trim(), desiredState?.Trim(), StringComparison.OrdinalIgnoreCase);
     }
 
     private static string DescribeLaunchMode(RemediationLaunchMode launchMode)

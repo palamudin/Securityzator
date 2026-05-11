@@ -210,6 +210,8 @@
 - Devices must be onboarded to Intune / Defender for Business for endpoint-oriented recommendations to become truly actionable.
 - The tenant must have effective Intune entitlement on the target users or devices, and MDM authority must be active, before endpoint and device-compliance signals can be trusted as complete.
 - Hybrid identity servers must exist and be onboarded before Defender for Identity recommendations can be completed.
+- Pre-AD / hybrid runway reference:
+  - `docs/runbooks/pre-ad-checklist.md`
 
 14. Workload-specific prerequisites by control family
 - Conditional Access / Entra:
@@ -223,6 +225,12 @@
     - seeds existing Global Administrators as admin-consent reviewers only when the tenant has no reviewer list configured yet
     - current tenant testing on `2026-04-13` confirmed reads succeed with the existing app, but direct apply still fails with `403 Authorization_RequestDenied` until those three write permissions are actually present in the issued app token
     - this is a live tenant configuration change, not a report-only assessment
+  - current runnable slice: `entra-low-impact-app-consent`
+    - uses Microsoft Graph `authorizationPolicy`
+    - restricts default user consent to the built-in `microsoft-user-default-low` policy for verified publishers or tenant-registered apps, preserves owned-resource consent policy assignments, and keeps risky-app user consent disabled
+    - requires `Policy.ReadWrite.Authorization`
+    - current tenant testing on `2026-04-23` succeeded live through the app-only Graph lane and the post-change Entra hygiene assessment now records this posture as controlled low-impact consent instead of “consent fully disabled”
+    - this is an operationally safer usability posture, not the same Secure Score posture as fully disabling default user consent
   - current runnable slice: `entra-identity-hygiene-baseline`
     - uses Microsoft Graph `authorizationPolicy`, `adminConsentRequestPolicy`, `domains`, and `directoryRoles`
     - assesses tenant-wide app-consent posture, admin consent workflow, self-service password reset, default-domain password expiration posture, and active Global Administrator count
@@ -255,6 +263,8 @@
   - EMS E5, standalone Defender for Identity, or equivalent suite inclusion
   - supported servers identified
   - sensors deployed on required domain controllers and related servers
+  - pre-AD and hybrid bring-up order should follow:
+    - `docs/runbooks/pre-ad-checklist.md`
 - Endpoint / Defender for Business:
   - effective Intune entitlement assigned to the users or devices in scope
   - devices enrolled and onboarded
@@ -353,8 +363,24 @@
   - the scripts below remain valid for development, managed rollout, support engineering, and break-glass onboarding
 - Repo bootstrap script:
   - `.\bootstrap.ps1`
+- Confirmed-working tenant shakedown harness:
+  - `powershell -ExecutionPolicy Bypass -File .\tools\Invoke-TenantShakedown.ps1 -Profile AppOnlyConfirmed -ConnectionId <connection-id> -IncludeGroupId <pilot-group-object-id>`
+  - default output:
+    - `.\artifacts\runlogs\tenant-shakedown-<timestamp>\summary.json`
+    - `.\artifacts\runlogs\tenant-shakedown-<timestamp>\summary.md`
+    - per-step stdout and JSON reports for each executed template
+  - main profiles:
+    - `AssessmentOnly`
+    - `AppOnlyConfirmed`
+    - `ArmorMeUpAppOnly`
+  - main purpose:
+    - run the currently confirmed-working app-driven templates in sequence
+    - override Conditional Access into `ReportOnly` or `Enabled`
+    - produce a durable event log for AI-agent functionality testing and clean-tenant shakedown runs
 - Targeted Exchange prerequisite script:
   - `.\tools\Grant-ExchangeTenantRequirements.ps1`
+- Targeted Graph prerequisite script:
+  - `.\tools\Grant-GraphTenantRequirements.ps1`
 - Targeted delegated Exchange anti-phish baseline script:
   - `.\tools\Apply-ExchangeAntiPhishBaseline.ps1`
 - Targeted delegated Exchange collaboration and mailbox baseline script:
@@ -365,6 +391,7 @@
   - `.\tools\Apply-ExchangeSafeLinksAndAttachmentsBaseline.ps1`
 - Local smoke runner for queued templates:
   - `dotnet run --project .\tools\Securityzator.SmokeRunner -- --templateKey entra-daily-use-hardening`
+  - `dotnet run --project .\tools\Securityzator.SmokeRunner -- --templateKey entra-low-impact-app-consent`
   - `dotnet run --project .\tools\Securityzator.SmokeRunner -- --templateKey entra-identity-hygiene-baseline`
   - `dotnet run --project .\tools\Securityzator.SmokeRunner -- --templateKey defender-endpoint-core-protection --includeGroupId <pilot-group-object-id>`
   - `dotnet run --project .\tools\Securityzator.SmokeRunner -- --templateKey defender-endpoint-bitlocker-baseline --includeGroupId <pilot-group-object-id>`
@@ -392,6 +419,8 @@
     - `powershell -ExecutionPolicy Bypass -File .\bootstrap.ps1 -InstallModules -BindExchangeCertificate -UseAuthTxt -ConnectionId <connection-id> -IncludeExchange $true -IncludeTeams $false`
   - 4. Stamp the tenant-side Exchange prerequisites through the targeted helper:
     - `powershell -ExecutionPolicy Bypass -File .\tools\Grant-ExchangeTenantRequirements.ps1 -UseAuthTxt -UseAzureCliDeviceCode -Assign`
+  - 4a. Stamp the current tenant-side Microsoft Graph prerequisites through the targeted helper when the app needs Entra daily-use or Intune write alignment:
+    - `powershell -ExecutionPolicy Bypass -File .\tools\Grant-GraphTenantRequirements.ps1 -UseAuthTxt -UseAzureCliDeviceCode -Assign -PermissionProfile Current`
   - 5. Verify the app now has:
     - `Office 365 Exchange Online / Exchange.ManageAsApp`
     - `Exchange Administrator`
@@ -445,9 +474,11 @@
 - Entra direct-apply and assessment implementation now exists:
   - `entra-identity-hygiene-baseline`
   - `entra-daily-use-hardening`
+  - `entra-low-impact-app-consent`
   - current blocker on the smoke tenant is not product code; it is the missing issued Graph write roles for the daily-use hardening path
 - Defender for Office baseline implementation exists:
   - Anti-phish baseline
+  - Anti-malware baseline
   - Safe Links baseline
   - Safe Attachments baseline
 - Exchange collaboration and mailbox baseline

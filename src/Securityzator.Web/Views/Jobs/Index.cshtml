@@ -7,35 +7,25 @@
 }
 
 @functions {
-    private static string GetJobStatusClass(RemediationJobStatus status)
+    private static string GetJobStatusClass(RemediationJobStatus status) => status switch
     {
-        return status switch
-        {
-            RemediationJobStatus.Succeeded => "success",
-            RemediationJobStatus.Failed => "failed",
-            RemediationJobStatus.Running => "running",
-            RemediationJobStatus.RetryScheduled => "retry",
-            _ => "idle"
-        };
-    }
+        RemediationJobStatus.Succeeded => "success",
+        RemediationJobStatus.Failed => "failed",
+        RemediationJobStatus.Running => "running",
+        RemediationJobStatus.RetryScheduled => "retry",
+        _ => "idle"
+    };
 
-    private static string GetStatusClass(RemediationRunStatus status)
+    private static string GetStatusClass(RemediationRunStatus status) => status switch
     {
-        return status switch
-        {
-            RemediationRunStatus.Succeeded => "success",
-            RemediationRunStatus.Failed => "failed",
-            _ => "retry"
-        };
-    }
+        RemediationRunStatus.Succeeded => "success",
+        RemediationRunStatus.Failed => "failed",
+        _ => "retry"
+    };
 
     private static string GetWorkerStatusClass(WorkerExecutionState state, bool isStale)
     {
-        if (isStale)
-        {
-            return "failed";
-        }
-
+        if (isStale) return "failed";
         return state switch
         {
             WorkerExecutionState.Processing => "running",
@@ -47,11 +37,7 @@
 
     private static string GetWorkerStatusLabel(WorkerExecutionState state, bool isStale)
     {
-        if (isStale)
-        {
-            return "Stale";
-        }
-
+        if (isStale) return "Stale";
         return state switch
         {
             WorkerExecutionState.Processing => "Processing",
@@ -62,167 +48,99 @@
     }
 }
 
-<section class="content-section">
-    <div class="section-heading">
-        <div>
-            <span class="eyebrow">Milestone 6 hardening slice</span>
-            <h1>Execution history and audit</h1>
-            <p class="section-copy">This page now shows the worker heartbeat alongside queued jobs and completed runs, so operators can tell the difference between a healthy idle queue and a remediation engine that has gone quiet.</p>
-        </div>
-        <div class="shell-pill">@Model.WorkspaceName</div>
+<div class="page-header">
+    <h1 class="page-title">Execution history</h1>
+    <div class="page-actions">
+        <span class="shell-pill">@Model.WorkspaceName</span>
     </div>
+</div>
 
-    <div class="split-layout">
-        <article class="info-card">
-            <div class="card-kicker">Worker posture</div>
-            <h2>Execution capabilities</h2>
-            <ul class="info-list">
-                @foreach (var capability in Model.Blueprint.JobCapabilities)
-                {
-                    <li><strong>@capability.Name:</strong> @capability.Summary</li>
-                }
-            </ul>
-        </article>
-
-        <article class="info-card">
-            <div class="card-kicker">Recovery cues</div>
-            <h2>What to look for when the queue feels stuck</h2>
-            <ul class="info-list">
-                <li>A worker marked as <strong>Stale</strong> has not refreshed its heartbeat within the expected window.</li>
-                <li>Jobs sitting in <strong>Queued</strong> with no healthy worker usually mean the worker process or service needs attention.</li>
-                <li>A worker with a recent heartbeat but repeated last errors points to Graph or credential failures rather than scheduler drift.</li>
-                <li>Completed runs still keep the full Graph-side outcome even if the worker has already moved back to idle.</li>
-            </ul>
-        </article>
-    </div>
-</section>
-
-<section class="content-section">
-    <div class="section-heading">
-        <div>
-            <span class="eyebrow">Worker state</span>
-            <h2>Background execution heartbeat</h2>
-        </div>
+<div class="content-section">
+    <div class="d-flex align-items-center gap-2 mb-3">
+        <span style="font-size:0.72rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);">Workers</span>
     </div>
 
     @if (!Model.Workers.Any())
     {
-        <article class="info-card empty-state">
-            <div class="card-kicker">No worker heartbeat yet</div>
-            <h3>The queue runner has not reported into shared state</h3>
-            <p>Start the worker host or Windows service and this page will begin showing heartbeat freshness, current job activity, and the last known execution summary.</p>
-        </article>
+        <div class="card">
+            <div class="card-body empty-state">
+                <i class="bi bi-cpu" style="font-size:2rem;color:var(--muted);"></i>
+                <p class="mt-2 mb-0" style="color:var(--muted);">No worker heartbeat yet. Start the worker host and this section will show heartbeat freshness and active job state.</p>
+            </div>
+        </div>
     }
     else
     {
         <div class="card-grid">
             @foreach (var worker in Model.Workers)
             {
-                <article class="info-card connection-card">
-                    <div class="card-kicker">Heartbeat @worker.LastHeartbeatUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</div>
-                    <h3>@worker.WorkerName</h3>
+                <div class="info-card connection-card">
+                    <div class="d-flex align-items-center justify-content-between mb-2">
+                        <div class="card-kicker">@worker.WorkerName</div>
+                        <span class="status-badge @GetWorkerStatusClass(worker.State, worker.IsStale)">@GetWorkerStatusLabel(worker.State, worker.IsStale)</span>
+                    </div>
                     <div class="connection-meta">
                         <div class="meta-row">
-                            <div>
-                                <div class="meta-label">Status</div>
-                                <div class="meta-value">
-                                    <span class="status-badge @GetWorkerStatusClass(worker.State, worker.IsStale)">@GetWorkerStatusLabel(worker.State, worker.IsStale)</span>
-                                </div>
-                            </div>
+                            <div class="meta-label">Heartbeat</div>
+                            <div class="meta-value">@worker.LastHeartbeatUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</div>
                         </div>
                         <div class="meta-row">
-                            <div>
-                                <div class="meta-label">Started</div>
-                                <div class="meta-value">@worker.StartedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</div>
-                            </div>
+                            <div class="meta-label">Started</div>
+                            <div class="meta-value">@worker.StartedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</div>
                         </div>
                         <div class="meta-row">
-                            <div>
-                                <div class="meta-label">Current job</div>
-                                <div class="meta-value">@(worker.CurrentJobId.HasValue ? worker.CurrentJobId.Value.ToString() : "No active job")</div>
+                            <div class="meta-label">Current job</div>
+                            <div class="meta-value">
+                                @(worker.CurrentJobId.HasValue ? worker.CurrentJobId.Value.ToString() : "Idle")
                                 @if (!string.IsNullOrWhiteSpace(worker.CurrentConnectionDisplayName))
                                 {
                                     <div class="table-subtext">@worker.CurrentConnectionDisplayName</div>
                                 }
                             </div>
                         </div>
-                        <div class="meta-row">
-                            <div>
-                                <div class="meta-label">Last completion</div>
-                                <div class="meta-value">@(worker.LastCompletedUtc.HasValue ? worker.LastCompletedUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") : "No completed job yet")</div>
-                            </div>
-                        </div>
                         @if (!string.IsNullOrWhiteSpace(worker.LastSummary))
                         {
                             <div class="meta-row">
-                                <div>
-                                    <div class="meta-label">Last summary</div>
-                                    <div class="meta-value pre-wrap">@worker.LastSummary</div>
-                                </div>
+                                <div class="meta-label">Last summary</div>
+                                <div class="meta-value pre-wrap">@worker.LastSummary</div>
                             </div>
                         }
                         @if (!string.IsNullOrWhiteSpace(worker.LastError))
                         {
                             <div class="meta-row">
-                                <div>
-                                    <div class="meta-label">Last error</div>
-                                    <div class="meta-value pre-wrap">@worker.LastError</div>
-                                </div>
+                                <div class="meta-label">Last error</div>
+                                <div class="meta-value pre-wrap" style="color:var(--danger-text);">@worker.LastError</div>
                             </div>
                         }
                     </div>
-                </article>
+                </div>
             }
         </div>
     }
-</section>
+</div>
 
-<section class="content-section">
-    <div class="section-heading">
-        <div>
-            <span class="eyebrow">Recommendation coverage</span>
-            <h2>How much of each cached tenant snapshot is actionable</h2>
+@if (Model.RecommendationCoverageSummaries.Any(s => s.HasSnapshot))
+{
+    <div class="content-section">
+        <div class="d-flex align-items-center gap-2 mb-3">
+            <span style="font-size:0.72rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);">Recommendation coverage</span>
         </div>
-    </div>
-
-    @if (!Model.RecommendationCoverageSummaries.Any(summary => summary.HasSnapshot))
-    {
-        <article class="info-card empty-state">
-            <div class="card-kicker">No cached snapshot coverage yet</div>
-            <h3>Sync recommendations first to unlock coverage tracking</h3>
-            <p>Once a tenant snapshot exists, Securityzator can show how much is runnable now, how much is routed into broader control families, and whether cached mapping keys need a persistence refresh.</p>
-        </article>
-    }
-    else
-    {
         <div class="card-grid connection-grid">
-            @foreach (var coverage in Model.RecommendationCoverageSummaries.Where(summary => summary.HasSnapshot))
+            @foreach (var coverage in Model.RecommendationCoverageSummaries.Where(s => s.HasSnapshot))
             {
-                <article class="info-card recommendation-connection-card">
-                    <div class="card-kicker">Snapshot @(coverage.LastSuccessUtc.HasValue ? coverage.LastSuccessUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm") : "Not yet synced")</div>
-                    <h3>@coverage.ConnectionDisplayName</h3>
+                <div class="info-card recommendation-connection-card">
+                    <div class="card-kicker">@coverage.ConnectionDisplayName</div>
+                    <div class="table-subtext mb-2">Snapshot @(coverage.LastSuccessUtc.HasValue ? coverage.LastSuccessUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm") : "Not yet synced")</div>
                     <div class="summary-grid">
-                        <div class="summary-stat">
-                            <div class="meta-label">Mapped</div>
-                            <div class="summary-value">@coverage.MappedControls</div>
-                        </div>
-                        <div class="summary-stat">
-                            <div class="meta-label">Runnable</div>
-                            <div class="summary-value">@coverage.RunnableControls</div>
-                        </div>
-                        <div class="summary-stat">
-                            <div class="meta-label">Broader family</div>
-                            <div class="summary-value">@coverage.MappedFamilyControls</div>
-                        </div>
-                        <div class="summary-stat">
-                            <div class="meta-label">Drift</div>
-                            <div class="summary-value">@coverage.MappingDriftControls</div>
-                        </div>
+                        <div class="summary-stat"><div class="meta-label">Mapped</div><div class="summary-value">@coverage.MappedControls</div></div>
+                        <div class="summary-stat"><div class="meta-label">Runnable</div><div class="summary-value">@coverage.RunnableControls</div></div>
+                        <div class="summary-stat"><div class="meta-label">Broader</div><div class="summary-value">@coverage.MappedFamilyControls</div></div>
+                        <div class="summary-stat"><div class="meta-label">Drift</div><div class="summary-value">@coverage.MappingDriftControls</div></div>
                     </div>
                     @if (coverage.TopTemplateBuckets.Any())
                     {
                         <div class="template-block">
-                            <div class="template-heading">Top mapped families</div>
+                            <div class="template-heading">Top families</div>
                             <ul class="info-list compact">
                                 @foreach (var bucket in coverage.TopTemplateBuckets.Take(3))
                                 {
@@ -232,29 +150,27 @@
                         </div>
                     }
                     <div class="form-actions compact">
-                        <a class="btn btn-outline-light" asp-controller="Recommendations" asp-action="Index" asp-route-connectionId="@coverage.ConnectionId">Open snapshot</a>
+                        <a class="btn btn-outline-light btn-sm" asp-controller="Recommendations" asp-action="Index" asp-route-connectionId="@coverage.ConnectionId">Open snapshot</a>
                     </div>
-                </article>
+                </div>
             }
         </div>
-    }
-</section>
+    </div>
+}
 
-<section class="content-section">
-    <div class="section-heading">
-        <div>
-            <span class="eyebrow">Queue state</span>
-            <h2>Background jobs</h2>
-        </div>
+<div class="content-section">
+    <div class="d-flex align-items-center gap-2 mb-3">
+        <span style="font-size:0.72rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);">Queue</span>
     </div>
 
     @if (!Model.Jobs.Any())
     {
-        <article class="info-card empty-state">
-            <div class="card-kicker">No jobs yet</div>
-            <h3>Queue a remediation to start building the background execution trail</h3>
-            <p>The worker will pick up queued remediations here, record retries when needed, and then hand off the final outcome into the remediation run history below.</p>
-        </article>
+        <div class="card">
+            <div class="card-body empty-state">
+                <i class="bi bi-inbox" style="font-size:2rem;color:var(--muted);"></i>
+                <p class="mt-2 mb-0" style="color:var(--muted);">No jobs queued yet. Queue a remediation to start building the execution trail.</p>
+            </div>
+        </div>
     }
     else
     {
@@ -262,11 +178,11 @@
             <table class="table table-dark align-middle mb-0 recommendation-table">
                 <thead>
                     <tr>
-                        <th scope="col">Status</th>
-                        <th scope="col">Job</th>
-                        <th scope="col">Progress</th>
-                        <th scope="col">Timing</th>
-                        <th scope="col">Latest detail</th>
+                        <th>Status</th>
+                        <th>Job</th>
+                        <th>Progress</th>
+                        <th>Timing</th>
+                        <th>Latest detail</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -279,9 +195,8 @@
                                 <div class="table-subtext">@job.ConnectionDisplayName</div>
                             </td>
                             <td>
-                                <div>Attempt @job.AttemptCount of @job.MaxAttempts</div>
-                                <div class="table-subtext">Approval: @job.ApprovalJustification</div>
-                                <div class="table-subtext">Launch mode: @job.LaunchMode</div>
+                                <div>Attempt @job.AttemptCount / @job.MaxAttempts</div>
+                                <div class="table-subtext">@job.LaunchMode</div>
                                 <div class="table-subtext">Include: @(string.IsNullOrWhiteSpace(job.IncludeGroupId) ? "All users" : job.IncludeGroupId)</div>
                                 @if (!string.IsNullOrWhiteSpace(job.ExcludeGroupId))
                                 {
@@ -289,26 +204,14 @@
                                 }
                             </td>
                             <td>
-                                <div>Queued @job.CreatedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</div>
-                                @if (job.StartedUtc.HasValue)
-                                {
-                                    <div class="table-subtext">Started @job.StartedUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</div>
-                                }
-                                @if (job.NextAttemptUtc.HasValue && job.Status == RemediationJobStatus.RetryScheduled)
-                                {
-                                    <div class="table-subtext">Retry @job.NextAttemptUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</div>
-                                }
-                                @if (job.CompletedUtc.HasValue)
-                                {
-                                    <div class="table-subtext">Finished @job.CompletedUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</div>
-                                }
+                                <div>@job.CreatedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</div>
+                                @if (job.StartedUtc.HasValue) { <div class="table-subtext">Started @job.StartedUtc.Value.ToLocalTime().ToString("HH:mm")</div> }
+                                @if (job.NextAttemptUtc.HasValue && job.Status == RemediationJobStatus.RetryScheduled) { <div class="table-subtext">Retry @job.NextAttemptUtc.Value.ToLocalTime().ToString("HH:mm")</div> }
+                                @if (job.CompletedUtc.HasValue) { <div class="table-subtext">Done @job.CompletedUtc.Value.ToLocalTime().ToString("HH:mm")</div> }
                             </td>
                             <td>
-                                <div>@(job.Logs.LastOrDefault() ?? job.LastError ?? "No detail recorded.")</div>
-                                @if (!string.IsNullOrWhiteSpace(job.PolicyId))
-                                {
-                                    <div class="table-subtext">Policy ID: @job.PolicyId</div>
-                                }
+                                <div>@(job.Logs.LastOrDefault() ?? job.LastError ?? "—")</div>
+                                @if (!string.IsNullOrWhiteSpace(job.PolicyId)) { <div class="table-subtext">Policy: @job.PolicyId</div> }
                             </td>
                         </tr>
                     }
@@ -316,23 +219,21 @@
             </table>
         </div>
     }
-</section>
+</div>
 
-<section class="content-section">
-    <div class="section-heading">
-        <div>
-            <span class="eyebrow">Completed runs</span>
-            <h2>Remediation run history</h2>
-        </div>
+<div class="content-section">
+    <div class="d-flex align-items-center gap-2 mb-3">
+        <span style="font-size:0.72rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);">Completed runs</span>
     </div>
 
     @if (!Model.Runs.Any())
     {
-        <article class="info-card empty-state">
-            <div class="card-kicker">No completed runs yet</div>
-            <h3>The worker has not finished a remediation yet</h3>
-            <p>Once a queued job completes, the final execution record with policy details and per-step logs will appear here.</p>
-        </article>
+        <div class="card">
+            <div class="card-body empty-state">
+                <i class="bi bi-check2-circle" style="font-size:2rem;color:var(--muted);"></i>
+                <p class="mt-2 mb-0" style="color:var(--muted);">No completed runs yet.</p>
+            </div>
+        </div>
     }
     else
     {
@@ -340,11 +241,11 @@
             <table class="table table-dark align-middle mb-0 recommendation-table">
                 <thead>
                     <tr>
-                        <th scope="col">Status</th>
-                        <th scope="col">Template</th>
-                        <th scope="col">Connection</th>
-                        <th scope="col">When</th>
-                        <th scope="col">Result</th>
+                        <th>Status</th>
+                        <th>Template</th>
+                        <th>Connection</th>
+                        <th>When</th>
+                        <th>Result</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -358,24 +259,17 @@
                             </td>
                             <td>
                                 <div class="fw-semibold">@run.ConnectionDisplayName</div>
-                                <div class="table-subtext">Approval: @run.ApprovalJustification</div>
-                                <div class="table-subtext">Launch mode: @run.LaunchMode</div>
+                                <div class="table-subtext">@run.LaunchMode</div>
                                 <div class="table-subtext">Include: @(run.IncludeGroupName ?? (string.IsNullOrWhiteSpace(run.IncludeGroupId) ? "All users" : run.IncludeGroupId))</div>
-                                @if (!string.IsNullOrWhiteSpace(run.ExcludeGroupId))
-                                {
-                                    <div class="table-subtext">Exclude: @(run.ExcludeGroupName ?? run.ExcludeGroupId)</div>
-                                }
+                                @if (!string.IsNullOrWhiteSpace(run.ExcludeGroupId)) { <div class="table-subtext">Exclude: @(run.ExcludeGroupName ?? run.ExcludeGroupId)</div> }
                             </td>
                             <td>
                                 <div>@run.CompletedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</div>
-                                <div class="table-subtext">By @run.LaunchedByOperatorName</div>
+                                <div class="table-subtext">@run.LaunchedByOperatorName</div>
                             </td>
                             <td>
                                 <div>@run.Summary</div>
-                                @if (!string.IsNullOrWhiteSpace(run.PolicyId))
-                                {
-                                    <div class="table-subtext">Policy ID: @run.PolicyId</div>
-                                }
+                                @if (!string.IsNullOrWhiteSpace(run.PolicyId)) { <div class="table-subtext">Policy: @run.PolicyId</div> }
                             </td>
                         </tr>
                     }
@@ -383,4 +277,4 @@
             </table>
         </div>
     }
-</section>
+</div>

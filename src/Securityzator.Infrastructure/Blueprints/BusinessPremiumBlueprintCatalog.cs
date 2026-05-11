@@ -110,9 +110,7 @@ internal static class BusinessPremiumBlueprintCatalog
                     "Ensure Safe Links for Office Applications is Enabled",
                     "Create Safe Links policies for email messages",
                     "Turn on Safe Attachments in block mode",
-                    "Ensure Safe Attachments policy is enabled",
-                    "Create zero-hour auto purge policies for malware",
-                    "Ensure the Common Attachment Types Filter is enabled"
+                    "Ensure Safe Attachments policy is enabled"
                 ]),
             new SecurityRecommendationPreview(
                 9,
@@ -630,6 +628,41 @@ internal static class BusinessPremiumBlueprintCatalog
                 RequiredLicenseCapabilities = [TenantLicenseCapabilityCatalog.EntraIdP1]
             },
             new RemediationTemplate(
+                "entra-low-impact-app-consent",
+                "Entra low-impact app consent",
+                "Restricts default user consent to low-impact delegated permissions for verified publishers or apps registered in this tenant, while preserving owned-resource consent policies and keeping risky-app consent disabled.",
+                "This slice gives operators a safer daily-use alternative to broad user consent without pretending it is the same posture as fully disabling app consent for Secure Score purposes.",
+                "Automated baseline",
+                true,
+                [
+                    "Azure connection with a stored client secret",
+                    "Microsoft Graph Policy.ReadWrite.Authorization application permission",
+                    "Permission classifications aligned so low-impact delegated scopes match the tenant's risk posture"
+                ],
+                [
+                    "Acquire a Microsoft Graph application token for Microsoft Entra tenant-setting automation.",
+                    "Read the current authorization policy and preserve any existing owned-resource permission-grant assignments.",
+                    "Assign the built-in low-impact verified-publisher user-consent policy and keep risky-app consent disabled.",
+                    "Capture before/after authorization-policy evidence so the tenant can review the tradeoff against the stricter no-user-consent baseline."
+                ])
+            {
+                ExecutionSurface = "Microsoft Graph authorizationPolicy update API.",
+                NextStage = "Pair this with admin consent workflow governance and permission classifications so low-impact consent stays intentional instead of drifting back toward broad user approval.",
+                CurrentBlockers =
+                [
+                    "This slice is an operational tradeoff, not a Secure Score-max posture. It deliberately allows controlled low-impact user consent instead of fully disabling it.",
+                    "Permission classifications still shape which delegated scopes count as low impact, so tenant classification hygiene matters.",
+                    "If the app lacks Policy.ReadWrite.Authorization, the run should fail clearly and leave the stricter Entra daily-use hardening path available."
+                ],
+                Targeting = new RemediationTemplateTargeting(
+                    "Tenant-wide Microsoft Entra settings",
+                    "Applies tenant-wide Microsoft Entra authorization-policy settings. No pilot group is used in this slice.",
+                    false,
+                    false),
+                DefaultLaunchMode = RemediationLaunchMode.DirectApply,
+                RequiredLicenseCapabilities = [TenantLicenseCapabilityCatalog.EntraIdP1]
+            },
+            new RemediationTemplate(
                 "entra-identity-hygiene-baseline",
                 "Entra admin and consent hygiene",
                 "Runs a Microsoft Graph assessment for Entra app consent posture, admin consent workflow, self-service password reset, password-expiration posture, and active Global Administrator hygiene, while surfacing the remaining hybrid and governance items as explicit follow-up.",
@@ -718,6 +751,36 @@ internal static class BusinessPremiumBlueprintCatalog
                 Targeting = new RemediationTemplateTargeting(
                     "Tenant-wide anti-phish protection",
                     "Applies tenant-wide mailbox-intelligence and impersonated-domain protections while seeding targeted user protection from discovered privileged accounts.",
+                    false,
+                    false),
+                DefaultLaunchMode = RemediationLaunchMode.DirectApply,
+                RequiredLicenseCapabilities = [TenantLicenseCapabilityCatalog.DefenderForOfficePlan1]
+            },
+            new RemediationTemplate(
+                "mdo-anti-malware-baseline",
+                "Defender for Office anti-malware hardening",
+                "Applies a managed Defender for Office anti-malware baseline across malware ZAP, the common attachment types filter, and inbound malware quarantine posture using certificate-backed Exchange Online automation.",
+                "The worker connects to Exchange Online PowerShell with the saved automation certificate, creates or updates the Securityzator anti-malware policy and rule across all accepted domains, and records readback state for the resulting baseline.",
+                "Automated baseline",
+                true,
+                [
+                    "Azure connection with a usable automation certificate",
+                    "Office 365 Exchange Online application permission Exchange.ManageAsApp",
+                    "Microsoft Entra admin role assignment such as Exchange Administrator",
+                    "ExchangeOnlineManagement PowerShell module on the worker host"
+                ],
+                [
+                    "Connect to Exchange Online PowerShell with the saved certificate-backed app identity.",
+                    "Create or update the Securityzator anti-malware policy with the common attachment types filter, admin-only quarantine, and malware ZAP enabled.",
+                    "Create or update the Securityzator anti-malware rule for all accepted domains.",
+                    "Capture readback state and preserve notes about preset-policy precedence and inbound-only scope."
+                ])
+            {
+                ExecutionSurface = "Exchange Online malware filter PowerShell automation using a Windows certificate-backed service principal.",
+                NextStage = "Extend this slice into more explicit preset-policy awareness and staged inbound scope handling once Exchange readiness and rollback handling mature.",
+                Targeting = new RemediationTemplateTargeting(
+                    "Tenant-wide inbound malware protection",
+                    "Applies tenant-wide inbound anti-malware posture across all accepted domains.",
                     false,
                     false),
                 DefaultLaunchMode = RemediationLaunchMode.DirectApply,
@@ -1041,6 +1104,7 @@ internal static class BusinessPremiumBlueprintCatalog
                     "Pilot devices or users via Microsoft Entra groups",
                     "Assigns the ASR baseline to a chosen Microsoft Entra pilot group, with an optional exclusion group for staged rollout or breakglass safety.",
                     true,
+                    true,
                     true),
                 DefaultLaunchMode = RemediationLaunchMode.DirectApply,
                 RequiredLicenseCapabilities =
@@ -1082,6 +1146,7 @@ internal static class BusinessPremiumBlueprintCatalog
                 Targeting = new RemediationTemplateTargeting(
                     "Pilot devices or users via Microsoft Entra groups",
                     "Assigns the baseline to a chosen Microsoft Entra pilot group, with an optional exclusion group for staged rollout or breakglass safety.",
+                    true,
                     true,
                     true),
                 DefaultLaunchMode = RemediationLaunchMode.DirectApply,
@@ -1125,6 +1190,7 @@ internal static class BusinessPremiumBlueprintCatalog
                     "Pilot devices or users via Microsoft Entra groups",
                     "Assigns the baseline to a chosen Microsoft Entra pilot group, with an optional exclusion group for staged rollout or breakglass safety.",
                     true,
+                    true,
                     true),
                 DefaultLaunchMode = RemediationLaunchMode.DirectApply,
                 RequiredLicenseCapabilities =
@@ -1166,6 +1232,7 @@ internal static class BusinessPremiumBlueprintCatalog
                 Targeting = new RemediationTemplateTargeting(
                     "Pilot devices or users via Microsoft Entra groups",
                     "Assigns the baseline to a chosen Microsoft Entra pilot group, with an optional exclusion group for staged rollout or breakglass safety.",
+                    true,
                     true,
                     true),
                 DefaultLaunchMode = RemediationLaunchMode.DirectApply,
@@ -1209,6 +1276,7 @@ internal static class BusinessPremiumBlueprintCatalog
                     "Pilot devices or users via Microsoft Entra groups",
                     "Assigns the baseline to a chosen Microsoft Entra pilot group, with an optional exclusion group for staged rollout or breakglass safety.",
                     true,
+                    true,
                     true),
                 DefaultLaunchMode = RemediationLaunchMode.DirectApply,
                 RequiredLicenseCapabilities =
@@ -1250,6 +1318,7 @@ internal static class BusinessPremiumBlueprintCatalog
                 Targeting = new RemediationTemplateTargeting(
                     "Pilot devices or users via Microsoft Entra groups",
                     "Assigns the baseline to a chosen Microsoft Entra pilot group, with an optional exclusion group for staged rollout or breakglass safety.",
+                    true,
                     true,
                     true),
                 DefaultLaunchMode = RemediationLaunchMode.DirectApply,
@@ -1333,6 +1402,7 @@ internal static class BusinessPremiumBlueprintCatalog
                     "Pilot devices or users via Microsoft Entra groups",
                     "Assigns the baseline to a chosen Microsoft Entra pilot group, with an optional exclusion group for staged rollout or breakglass safety.",
                     true,
+                    true,
                     true),
                 DefaultLaunchMode = RemediationLaunchMode.DirectApply,
                 RequiredLicenseCapabilities =
@@ -1375,6 +1445,7 @@ internal static class BusinessPremiumBlueprintCatalog
                     "Pilot devices or users via Microsoft Entra groups",
                     "Assigns the baseline to a chosen Microsoft Entra pilot group, with an optional exclusion group for staged rollout or breakglass safety.",
                     true,
+                    true,
                     true),
                 DefaultLaunchMode = RemediationLaunchMode.DirectApply,
                 RequiredLicenseCapabilities =
@@ -1416,6 +1487,7 @@ internal static class BusinessPremiumBlueprintCatalog
                 Targeting = new RemediationTemplateTargeting(
                     "Pilot devices or users via Microsoft Entra groups",
                     "Assigns the baseline to a chosen Microsoft Entra pilot group, with an optional exclusion group for staged rollout or breakglass safety.",
+                    true,
                     true,
                     true),
                 DefaultLaunchMode = RemediationLaunchMode.DirectApply,
@@ -1460,6 +1532,7 @@ internal static class BusinessPremiumBlueprintCatalog
                 Targeting = new RemediationTemplateTargeting(
                     "Pilot devices or users via Microsoft Entra groups",
                     "Scopes the assessment to the selected Microsoft Entra pilot group, with an optional exclusion group for staged rollout or breakglass safety.",
+                    true,
                     true,
                     true),
                 DefaultLaunchMode = RemediationLaunchMode.ReportOnly,

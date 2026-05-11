@@ -50,13 +50,11 @@
 }
 
 <section class="content-section">
-    <div class="section-heading">
-        <div>
-            <span class="eyebrow">Milestone 3 live slice</span>
-            <h1>Recommendation collection</h1>
-            <p class="section-copy">Secure Score collection now runs through the backend so the portal can validate a saved tenant connection, cache the latest snapshot, and keep operators out of the prototype page.</p>
+    <div class="page-header">
+        <h1 class="page-title">Recommendations</h1>
+        <div class="page-actions">
+            <span class="shell-pill">@Model.WorkspaceName</span>
         </div>
-        <div class="shell-pill">@Model.WorkspaceName</div>
     </div>
 
     @if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
@@ -142,11 +140,12 @@
 @if (snapshot is not null)
 {
     <section class="content-section">
-        <div class="split-layout recommendation-summary-grid">
-            <article class="info-card">
-                <div class="card-kicker">Selected connection</div>
-                <h2>@snapshot.ConnectionDisplayName</h2>
-                <p class="section-copy">The recommendation list below is the most recent backend snapshot for this tenant connection. Syncing again revalidates the saved app credentials and refreshes the cached controls.</p>
+        <article class="info-card">
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+                <div>
+                    <div class="card-kicker">Selected connection</div>
+                    <h2 class="mb-0">@snapshot.ConnectionDisplayName</h2>
+                </div>
                 <div class="summary-grid">
                     <div class="summary-stat">
                         <div class="meta-label">Status</div>
@@ -197,66 +196,50 @@
                         <div class="summary-value">@(snapshot.LastSuccessUtc.HasValue ? snapshot.LastSuccessUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm") : "No successful sync yet")</div>
                     </div>
                 </div>
-                <div class="form-actions compact">
+                <div class="form-actions">
                     <form asp-action="Sync" method="post" class="inline-form">
                         @Html.AntiForgeryToken()
                         <input type="hidden" name="connectionId" value="@snapshot.ConnectionId" />
-                        <button type="submit" class="btn btn-primary">Sync now</button>
+                        <button type="submit" class="btn btn-primary btn-sm">Sync now</button>
                     </form>
                     <form asp-action="BackfillMappings" method="post" class="inline-form">
                         @Html.AntiForgeryToken()
                         <input type="hidden" name="connectionId" value="@snapshot.ConnectionId" />
-                        <button type="submit" class="btn btn-outline-light">Refresh cached mappings</button>
+                        <button type="submit" class="btn btn-outline-light btn-sm">Refresh mappings</button>
                     </form>
                 </div>
-            </article>
-
-            <article class="info-card">
-                <div class="card-kicker">Operator notes</div>
-                <h2>What this slice proves</h2>
-                <ul class="status-list">
-                    <li>Saved tenant credentials now stay on the server while Graph token acquisition happens in the backend.</li>
-                    <li>Secure Score control profiles are paged, normalized, and cached per connection instead of being pulled directly into the browser.</li>
-                    <li>Mapped playbooks and control sets now surface in the table so recommendation rows can route into real remediation workflows instead of ending in manual triage.</li>
-                    <li>The playbook cards below now expose current blockers and next-stage promotion targets so we can close this functionality stage with a visible gap list.</li>
-                    <li>@(Model.MappingDriftCount > 0 ? $"{Model.MappingDriftCount} cached row(s) still carry stale stored template keys from before the newer control-family mapping work. Use 'Refresh cached mappings' to persist the current routing without a full re-sync." : "Cached template keys already match the current routing logic.")</li>
-                </ul>
-                @if (!string.IsNullOrWhiteSpace(snapshot.LastError))
-                {
-                    <div class="validation-summary compact">
-                        @snapshot.LastError
+            </div>
+            <div class="summary-grid mt-3">
+                <div class="summary-stat"><div class="meta-label">Status</div><div class="mt-1"><span class="status-badge @GetStatusClass(snapshot.SyncStatus)">@GetStatusLabel(snapshot.SyncStatus)</span></div></div>
+                <div class="summary-stat"><div class="meta-label">Controls</div><div class="summary-value">@Model.TotalRecommendationCount</div></div>
+                <div class="summary-stat"><div class="meta-label">Filtered</div><div class="summary-value">@Model.FilteredRecommendationCount</div></div>
+                <div class="summary-stat"><div class="meta-label">Mapped</div><div class="summary-value">@Model.MappedRecommendationCount</div></div>
+                <div class="summary-stat"><div class="meta-label">Runnable</div><div class="summary-value">@Model.RunnableRecommendationCount</div></div>
+                <div class="summary-stat"><div class="meta-label">License gap</div><div class="summary-value">@Model.LicenseBlockedRecommendationCount</div></div>
+                <div class="summary-stat"><div class="meta-label">License unknown</div><div class="summary-value">@Model.LicenseUnknownRecommendationCount</div></div>
+                <div class="summary-stat"><div class="meta-label">Broader family</div><div class="summary-value">@Model.BlockedRecommendationCount</div></div>
+                <div class="summary-stat"><div class="meta-label">Unmapped</div><div class="summary-value">@Model.UnmappedRecommendationCount</div></div>
+                <div class="summary-stat"><div class="meta-label">Drift</div><div class="summary-value">@Model.MappingDriftCount</div></div>
+                <div class="summary-stat"><div class="meta-label">Last attempt</div><div class="summary-value" style="font-size:0.82rem;">@(snapshot.LastAttemptUtc.HasValue ? snapshot.LastAttemptUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm") : "—")</div></div>
+                <div class="summary-stat"><div class="meta-label">Last success</div><div class="summary-value" style="font-size:0.82rem;">@(snapshot.LastSuccessUtc.HasValue ? snapshot.LastSuccessUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm") : "—")</div></div>
+            </div>
+            @if (!string.IsNullOrWhiteSpace(snapshot.LastError))
+            {
+                <div class="validation-summary mt-3">@snapshot.LastError</div>
+            }
+            @if (Model.SelectedDeclaredLicenseCapabilityLabels.Any())
+            {
+                <div class="template-block mt-3">
+                    <div class="template-heading">Declared license profile</div>
+                    <div class="capability-list mt-1">
+                        @foreach (var capabilityLabel in Model.SelectedDeclaredLicenseCapabilityLabels)
+                        {
+                            <span class="status-badge idle">@capabilityLabel</span>
+                        }
                     </div>
-                }
-                @if (Model.CoverageSummary is not null && Model.CoverageSummary.TopTemplateBuckets.Any())
-                {
-                    <div class="template-block">
-                        <div class="template-heading">Top mapped families in this snapshot</div>
-                        <ul class="info-list compact">
-                            @foreach (var bucket in Model.CoverageSummary.TopTemplateBuckets)
-                            {
-                                <li>@bucket.TemplateName: @bucket.ControlCount</li>
-                            }
-                        </ul>
-                    </div>
-                }
-                <div class="template-block">
-                    <div class="template-heading">Declared tenant capability profile</div>
-                    @if (Model.SelectedDeclaredLicenseCapabilityLabels.Any())
-                    {
-                        <div class="capability-list">
-                            @foreach (var capabilityLabel in Model.SelectedDeclaredLicenseCapabilityLabels)
-                            {
-                                <span class="status-badge idle">@capabilityLabel</span>
-                            }
-                        </div>
-                    }
-                    else
-                    {
-                        <p>No license capability profile is declared on this connection yet, so license-gated playbooks will show as unknown instead of blocked.</p>
-                    }
                 </div>
-            </article>
-        </div>
+            }
+        </article>
     </section>
 
     @if (Model.MappedPlaybooks.Any())
@@ -349,11 +332,8 @@
     }
 
     <section class="content-section">
-        <div class="section-heading">
-            <div>
-                <span class="eyebrow">Latest snapshot</span>
-                <h2>Secure Score recommendations</h2>
-            </div>
+        <div class="page-header mt-2">
+            <h2 class="page-title" style="font-size:1.1rem;">Secure Score recommendations</h2>
         </div>
 
         @if (!snapshot.Recommendations.Any())

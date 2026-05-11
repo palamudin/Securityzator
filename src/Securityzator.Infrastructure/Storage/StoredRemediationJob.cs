@@ -43,6 +43,8 @@ public sealed class StoredRemediationJob
 
     public string? ExcludeGroupId { get; set; }
 
+    public bool AllUsersAssignment { get; set; }
+
     public string? PolicyId { get; set; }
 
     public string? PolicyState { get; set; }

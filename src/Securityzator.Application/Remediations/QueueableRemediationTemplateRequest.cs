@@ -9,4 +9,5 @@ public sealed record QueueableRemediationTemplateRequest(
     RemediationLaunchMode LaunchMode,
     string TemplateKey,
     string IncludeGroupId,
-    string? ExcludeGroupId);
+    string? ExcludeGroupId,
+    bool AllUsersAssignment = false);
