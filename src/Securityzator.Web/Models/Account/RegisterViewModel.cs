@@ -21,7 +21,7 @@ public sealed class RegisterViewModel
 
     [Required]
     [DataType(DataType.Password)]
-    [StringLength(128, MinimumLength = 10)]
+    [StringLength(128, MinimumLength = 4)]
     public string Password { get; set; } = string.Empty;
 
     [Required]

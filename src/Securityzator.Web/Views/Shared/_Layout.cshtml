@@ -47,6 +47,15 @@
                     <i class="bi bi-clock-history"></i>
                     <span class="nav-label">Jobs</span>
                 </a>
+                <span class="nav-section">Integration</span>
+                <a class="@(currentCtrl == "Integration" ? "active" : "")" asp-controller="Integration" asp-action="Jira">
+                    <i class="bi bi-kanban"></i>
+                    <span class="nav-label">JIRA / AIMSP</span>
+                </a>
+                <a class="@(currentCtrl == "Reporting" ? "active" : "")" asp-controller="Reporting" asp-action="Index">
+                    <i class="bi bi-graph-up"></i>
+                    <span class="nav-label">Reporting</span>
+                </a>
             </nav>
             <div class="sidebar-footer">Securityzator</div>
         </aside>

@@ -1,0 +1,247 @@
+@{
+    ViewData["Title"] = "Integration — JIRA / AIMSP";
+    var companies = ViewBag.Companies as List<string> ?? new List<string>();
+    var provisioned = ViewBag.Provisioned as List<Dictionary<string, object>> ?? new List<Dictionary<string, object>>();
+    var events = ViewBag.Events as List<Dictionary<string, object>> ?? new List<Dictionary<string, object>>();
+    var secureScore = ViewBag.SecureScore as Dictionary<string, object> ?? new Dictionary<string, object>();
+    var statusMessage = ViewBag.StatusMessage as string;
+    var errorMessage = ViewBag.ErrorMessage as string;
+}
+
+<section class="hero-panel">
+    <div class="hero-copy">
+        <span class="eyebrow">Integration</span>
+        <h1>AIMSP Chaos Engine</h1>
+        <p class="hero-text">
+            Provision fake companies into the real M365 tenant, trigger incidents, and watch Securityzator detect the drift.
+            Every action here creates real Graph API operations against the <strong>Strong MSP</strong> tenant.
+        </p>
+    </div>
+    <div class="status-card">
+        <div class="status-label">Tenant</div>
+        <div class="status-value">Strong MSP</div>
+        <ul class="status-list">
+            <li>ai-msp.com / strongmspcouk.onmicrosoft.com</li>
+            <li>@provisioned.Count company(s) provisioned</li>
+            <li>@events.Count recent chaos event(s)</li>
+        </ul>
+    </div>
+</section>
+
+@if (!string.IsNullOrWhiteSpace(statusMessage))
+{
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        @statusMessage
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+}
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        @errorMessage
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+}
+
+@* ── Provision Panel ──────────────────────────────────────────── *@
+<section class="content-section">
+    <div class="section-heading">
+        <div>
+            <span class="eyebrow">Provision</span>
+            <h2>Seed fake companies into the tenant</h2>
+        </div>
+    </div>
+
+    <div class="card-grid">
+        @* Single Company Provision *@
+        <article class="info-card">
+            <h3>Provision one company</h3>
+            <p>Creates Entra ID users, assigns licenses, and builds a security group for one company from the portfolio.</p>
+            <form method="post" asp-action="ProvisionCompany" asp-antiforgery="true">
+                <div class="mb-3">
+                    <label class="form-label">Company</label>
+                    <select name="companyName" class="form-select" required>
+                        <option value="">— pick a company —</option>
+                        @foreach (var c in companies)
+                        {
+                            <option value="@c">@c</option>
+                        }
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">User count</label>
+                    <input type="number" name="userCount" class="form-control" value="5" min="1" max="25" />
+                </div>
+                <button type="submit" class="btn btn-primary">Provision</button>
+            </form>
+        </article>
+
+        @* Bulk Provision *@
+        <article class="info-card">
+            <h3>Provision all</h3>
+            <p>Provisions every active portfolio company into the tenant. Caps at 20 companies, @ViewBag.MaxUsers or fewer users each.</p>
+            <form method="post" asp-action="ProvisionAll" asp-antiforgery="true">
+                <div class="mb-3">
+                    <label class="form-label">Max users per company</label>
+                    <input type="number" name="maxUsers" class="form-control" value="5" min="1" max="10" />
+                </div>
+                <button type="submit" class="btn btn-outline-light">Provision All</button>
+            </form>
+        </article>
+    </div>
+</section>
+
+@* ── Chaos Panel ──────────────────────────────────────────────── *@
+<section class="content-section">
+    <div class="section-heading">
+        <div>
+            <span class="eyebrow">Chaos</span>
+            <h2>Break things — trigger real M365 incidents</h2>
+        </div>
+    </div>
+
+    <div class="card-grid">
+        @{
+            var chaosActions = new[]
+            {
+                new { type = "password", name = "Password Expire", desc = "Revoke all sign-in sessions for every user in the company. Forces re-auth.", icon = "🔑", btn = "btn-danger" },
+                new { type = "license", name = "Remove License", desc = "Strip the first assigned license from a random user. Triggers license deprovision drift.", icon = "📋", btn = "btn-warning" },
+                new { type = "group", name = "Remove from Group", desc = "Remove all users from the company's security group. Breaks group-based access.", icon = "👥", btn = "btn-warning" },
+                new { type = "disable", name = "Disable User", desc = "Disable a user account. Triggers account-status drift and sign-in anomalies.", icon = "🚫", btn = "btn-danger" },
+                new { type = "random", name = "Random Chaos", desc = "Pick a random incident type and a random user. Surprise drift.", icon = "🎲", btn = "btn-outline-light" },
+            };
+        }
+
+        @foreach (var action in chaosActions)
+        {
+            <article class="info-card">
+                <h3>@action.icon @action.name</h3>
+                <p>@action.desc</p>
+                <form method="post" asp-action="TriggerChaos" asp-antiforgery="true">
+                    <input type="hidden" name="chaosType" value="@action.type" />
+                    <div class="mb-3">
+                        <select name="companyName" class="form-select" required>
+                            <option value="">— pick a provisioned company —</option>
+                            @foreach (var p in provisioned)
+                            {
+                                <option value="@p["name"]">@p["name"] (@p["users"] users)</option>
+                            }
+                        </select>
+                    </div>
+                    <button type="submit" class="btn @action.btn">Trigger</button>
+                </form>
+            </article>
+        }
+    </div>
+</section>
+
+@* ── Provisioned Companies ────────────────────────────────────── *@
+<section class="content-section">
+    <div class="section-heading">
+        <div>
+            <span class="eyebrow">State</span>
+            <h2>Provisioned companies in tenant</h2>
+        </div>
+    </div>
+
+    @if (provisioned.Count == 0)
+    {
+        <article class="info-card">
+            <p class="muted-copy">No companies provisioned yet. Use the Provision panel above to seed the tenant.</p>
+        </article>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-dark table-striped">
+                <thead>
+                    <tr>
+                        <th>Company</th>
+                        <th>Users</th>
+                        <th>Group</th>
+                        <th>Provisioned</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var p in provisioned)
+                    {
+                        <tr>
+                            <td><strong>@p["name"]</strong></td>
+                            <td>@p["users"]</td>
+                            <td><code>@p["group"]</code></td>
+                            <td>@p["provisioned"]</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+@* ── Event Log ────────────────────────────────────────────────── *@
+<section class="content-section">
+    <div class="section-heading">
+        <div>
+            <span class="eyebrow">Audit</span>
+            <h2>Recent chaos events</h2>
+        </div>
+    </div>
+
+    @if (events.Count == 0)
+    {
+        <article class="info-card">
+            <p class="muted-copy">No chaos events yet. Trigger some chaos above.</p>
+        </article>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-dark table-striped table-sm">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Event</th>
+                        <th>Company</th>
+                        <th>Detail</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var e in events)
+                    {
+                        <tr>
+                            <td style="white-space:nowrap">@e["time"]</td>
+                            <td><span class="badge bg-info">@e["event"]</span></td>
+                            <td>@e["company"]</td>
+                            <td style="font-size:0.85rem">@e["detail"]</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+@* ── Secure Score ─────────────────────────────────────────────── *@
+<section class="content-section">
+    <div class="section-heading">
+        <div>
+            <span class="eyebrow">Drift</span>
+            <h2>Secure Score</h2>
+        </div>
+    </div>
+
+    <article class="info-card">
+        @if (secureScore.TryGetValue("available", out var avail) && (bool)avail)
+        {
+            <div class="status-value">@secureScore["raw"]</div>
+        }
+        else
+        {
+            <p class="muted-copy">
+                Secure Score not yet fetched. Provision a company or trigger chaos first, then check
+                the Recommendations page to see drift.
+            </p>
+        }
+    </article>
+</section>

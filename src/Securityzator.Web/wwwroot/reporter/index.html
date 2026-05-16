@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ConnectWise Reporter Proto</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gridstack@12.3.3/dist/gridstack.min.css">
+<link rel="stylesheet" href="./styles.css">
+<link rel="stylesheet" href="./template-grid.css">
+</head>
+<body>
+<div class="app" id="app">
+  <aside class="sidebar">
+    <div class="sidebar-top">
+      <div class="brand"><div class="brand-mark">CW</div><div class="brand-copy"><div class="brand-title">Reporter Proto</div><div class="brand-sub">GridStack + fake endpoint engine</div></div></div>
+      <button class="btn collapse-btn" id="sidebarToggle" type="button">‹</button>
+    </div>
+    <nav class="nav">
+      <div class="nav-label">Workspace</div>
+      <button class="nav-btn active" data-view="dashboard" type="button"><div class="nav-icon">▣</div><div class="nav-copy"><div class="nav-title">Dashboard</div><div class="nav-sub">Board engine and views</div></div></button>
+      <div class="nav-label">Settings</div>
+      <button class="nav-btn" data-view="templates" type="button"><div class="nav-icon">◫</div><div class="nav-copy"><div class="nav-title">Templates</div><div class="nav-sub">Preview and add blocks</div></div></button>
+      <button class="nav-btn" data-view="builder" type="button"><div class="nav-icon">✚</div><div class="nav-copy"><div class="nav-title">New Template</div><div class="nav-sub">Prereq-driven custom block builder</div></div></button>
+      <button class="nav-btn" data-view="schema" type="button"><div class="nav-icon">⌘</div><div class="nav-copy"><div class="nav-title">Trimmed Schema</div><div class="nav-sub">Reporting fields used by the builder</div></div></button>
+      <div class="nav-label">Operations</div>
+      <button class="nav-btn" data-view="audit" type="button"><div class="nav-icon">📋</div><div class="nav-copy"><div class="nav-title">Audit Trail</div><div class="nav-sub">Agentic operation log</div></div></button>
+    </nav>
+    <div class="sidebar-foot">
+      <button class="btn" id="sidebarAddBtn" type="button" style="width:100%;margin-bottom:10px;">Add block from Templates</button>
+      Uses local browser storage for this POC. Later this maps to server-side persistence.
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="header">
+      <div><div class="eyebrow">ConnectWise PSA / Reporting / Prototype</div><div class="page-title">Ticket Operations Command View</div><div class="page-sub">Preset block sizes, local persistence, fake async endpoint calls, per-tile refresh, grouping and maximize.</div></div>
+      <div class="header-actions">
+        <div class="chip"><span class="dot"></span> External JSON-backed fake response engine</div>
+        <div class="chip">
+          <label style="margin-right:6px;font-size:12px;">Source:</label>
+          <select id="sourceSelect" style="background:#0c1d2b;color:#ecf6ff;border:1px solid rgba(255,255,255,0.15);padding:4px 8px;border-radius:4px;font-size:12px;">
+            <option value="">— select source —</option>
+            <option value="cwm">ConnectWise (CWM)</option>
+            <option value="jira">JIRA Native</option>
+          </select>
+          <button id="refreshBtn" type="button" style="background:rgba(79,167,220,.15);color:#4fa7dc;border:1px solid rgba(79,167,220,.3);padding:4px 10px;border-radius:4px;font-size:12px;margin-left:6px;cursor:pointer;">↻ Refresh</button>
+        </div>
+        <div class="sync-pill" id="syncPill"><span class="sync-dot" id="syncDot"></span><span id="syncStatusText">Select a data source</span><div id="syncBar" style="height:3px;background:rgba(79,167,220,.3);border-radius:2px;margin-top:4px;overflow:hidden;display:none;"><div id="syncBarFill" style="height:100%;width:0%;background:linear-gradient(90deg,#4fa7dc,#79d3a6);border-radius:2px;transition:width .3s;"></div></div></div>
+        <div class="chip">Uses local storage <button class="btn" id="clearStorageBtn" type="button" style="min-height:28px;padding:0 10px;margin-left:8px;">Clear</button></div>
+        <button class="btn primary" id="headerAddBlock" type="button">Add template block</button>
+      </div>
+    </header>
+
+    <section class="view active" id="view-dashboard">
+      <div class="dashboard-view">
+        <div class="toolbar">
+          <div class="dashboard-tabs">
+            <div class="tab-strip" id="dashboardTabs"></div>
+            <div class="tab-actions">
+              <button class="icon-mini" id="newDashboardBtn" type="button" title="New dashboard">+</button>
+              <button class="icon-mini" id="renameDashboardBtn" type="button" title="Rename dashboard">✎</button>
+              <button class="icon-mini" id="deleteDashboardBtn" type="button" title="Delete dashboard">−</button>
+            </div>
+          </div>
+
+          <div class="toolbar-right">
+            <div class="group-toolbar">
+              <select id="groupSelect" class="group-select"><option value="">No group selected</option></select>
+              <button class="btn" id="newGroupBtn" type="button">New group</button>
+              <button class="btn" id="renameGroupBtn" type="button">Rename group</button>
+              <button class="btn" id="toggleGroupModeBtn" type="button">Group mode: Off</button>
+              <button class="btn" id="openGroupBtn" type="button">Open group</button>
+            </div>
+            <div class="selectish">12 columns</div>
+            <div class="selectish">Type width presets</div>
+            <div class="selectish">Resizable</div>
+          </div>
+        </div>
+
+        <div class="board-shell">
+          <div id="boardsHost"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" id="view-templates">
+      <div class="settings-view">
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-title">Template Library</div>
+            <div class="panel-sub">Blocks read from endpoint-shaped responses derived from external JSON data.</div>
+          </div>
+          <div class="panel-body">
+            <div id="templateList" style="display:grid;gap:14px;"></div>
+          </div>
+        </div>
+
+        <div class="panel preview-panel">
+          <div class="preview-shell">
+            <div class="preview-toolbar">
+              <div>
+                <div class="panel-title" id="previewTitle">Select a template</div>
+                <div class="panel-sub" id="previewSub">Preview uses the same renderer as dashboard blocks.</div>
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button class="btn" id="editTemplateBtn" type="button">Edit in builder</button>
+                <button class="btn" id="duplicateTemplateBtn" type="button">Duplicate</button>
+                <button class="btn" id="deleteTemplateBtn" type="button">Delete custom</button>
+                <button class="btn primary" id="addTemplateToBoardBtn" type="button">Add to board</button>
+              </div>
+            </div>
+            <div class="preview-stage">
+              <div class="previewHolder preview-holder" id="previewHolder"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" id="view-builder">
+      <div class="builder-view">
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <div class="panel-title">New Template</div>
+              <div class="panel-sub">Build a custom slide from endpoint, field, grouping, and default size choices.</div>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="stack">
+              <div class="section">
+                <div class="section-title">Basics</div>
+                <div class="stack">
+                  <div>
+                    <div class="field-help">Title</div>
+                    <input class="input" id="builderTitle" value="Custom Ticket Block" />
+                  </div>
+                  <div>
+                    <div class="field-help">Description</div>
+                    <textarea class="textarea" id="builderDescription">Endpoint-driven custom block using the trimmed ticket payload.</textarea>
+                  </div>
+                </div>
+              </div>
+
+              <div class="section">
+                <div class="section-title">Prerequisites</div>
+                <div class="chip-grid" id="prereqChips"></div>
+                <div class="field-help" style="margin-top:10px">Choose the ingredients and the builder will nudge endpoint and grouping choices for you.</div>
+              </div>
+
+              <div class="section">
+                <div class="section-title">Endpoint + visual</div>
+                <div class="field-row">
+                  <div>
+                    <div class="field-help">Endpoint response</div>
+                    <select class="select" id="builderEndpoint"></select>
+                  </div>
+                  <div>
+                    <div class="field-help">Visual type</div>
+                    <select class="select" id="builderRenderer">
+                      <option value="kpi">KPI</option>
+                      <option value="bar">Bar</option>
+                      <option value="donut">Donut</option>
+                      <option value="list">Watchlist</option>
+                      <option value="table">Table</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="field-row" style="margin-top:10px;">
+                  <div>
+                    <div class="field-help">Primary field</div>
+                    <select class="select" id="builderPrimary"></select>
+                  </div>
+                  <div>
+                    <div class="field-help">Group by</div>
+                    <select class="select" id="builderGroup"></select>
+                  </div>
+                </div>
+              </div>
+
+              <div class="section">
+                <div class="section-title">Optional field roles</div>
+                <div id="roleFields" class="stack"></div>
+              </div>
+
+              <div class="section">
+                <div class="section-title">Default block size</div>
+                <div class="field-row">
+                  <div>
+                    <div class="field-help">Width</div>
+                    <select class="select" id="builderW">
+                      <option>3</option><option selected>4</option><option>5</option><option>6</option><option>8</option><option>12</option>
+                    </select>
+                  </div>
+                  <div>
+                    <div class="field-help">Height</div>
+                    <select class="select" id="builderH">
+                      <option>2</option><option selected>3</option><option>4</option><option>5</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                <button class="btn" id="builderResetBtn" type="button">Reset</button>
+                <button class="btn" id="builderDuplicateBtn" type="button">Duplicate current</button>
+                <button class="btn" id="builderDeleteBtn" type="button">Delete custom</button>
+                <button class="btn primary" id="saveTemplateBtn" type="button">Save Template</button>
+                <button class="btn" id="saveAndAddBtn" type="button">Save and Add</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="preview-shell">
+            <div class="preview-toolbar">
+              <div>
+                <div class="panel-title">Large Live Preview</div>
+                <div class="panel-sub">This uses the same block renderer as the dashboard cards.</div>
+              </div>
+            </div>
+            <div class="preview-stage">
+              <div class="previewHolder preview-holder" id="builderPreview"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" id="view-schema">
+      <div class="schema-view">
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <div class="panel-title">Trimmed Ticket Schema</div>
+              <div class="panel-sub">Only the reporting fields the builder and templates actually care about.</div>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="schema-list" id="schemaList"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" id="view-audit">
+      <div class="audit-view">
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <div class="panel-title">Agentic Audit Trail</div>
+              <div class="panel-sub">Every M365 operation, Securityzator remediation, and agent action — timestamped and searchable.</div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <span id="auditStats" style="font-size:12px;color:rgba(236,246,255,.6);"></span>
+              <button class="btn" id="auditRefreshBtn" type="button">↻ Refresh</button>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
+              <select id="auditScenarioSelect" style="background:#0c1d2b;color:#ecf6ff;border:1px solid rgba(255,255,255,.15);padding:6px 10px;border-radius:4px;font-size:12px;">
+                <option value="">All scenarios</option>
+              </select>
+              <input id="auditTypeFilter" placeholder="Filter by event type..." style="background:#0c1d2b;color:#ecf6ff;border:1px solid rgba(255,255,255,.15);padding:6px 10px;border-radius:4px;font-size:12px;min-width:180px;">
+              <button class="btn" id="auditFilterBtn" type="button">Filter</button>
+            </div>
+            <div id="auditEventList" style="display:grid;gap:6px;"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="modal-backdrop" id="guideModal">
+  <div class="guide-shell guide-modal-card" role="dialog" aria-modal="true" aria-labelledby="guideModalTitle">
+    <div class="guide-kicker">Welcome aboard</div>
+    <div class="guide-title" id="guideModalTitle">Reporter Proto quick tour</div>
+    <div class="guide-copy">This board is intentionally simple: add blocks from Templates, spawn dashboards from the toolbar, and use groups to collect cards across dashboards without mixing canvases.</div>
+    <div class="guide-grid">
+      <div class="guide-card">
+        <div class="guide-step">1</div>
+        <div class="guide-card-title">Add blocks</div>
+        <div class="guide-card-copy">Use <strong>Add template block</strong> in the top right or open <strong>Templates</strong> from the sidebar.</div>
+      </div>
+      <div class="guide-card">
+        <div class="guide-step">2</div>
+        <div class="guide-card-title">Spawn dashboards</div>
+        <div class="guide-card-copy">Use the <strong>+</strong> button in the dashboard tab strip to create another isolated canvas.</div>
+      </div>
+      <div class="guide-card">
+        <div class="guide-step">3</div>
+        <div class="guide-card-title">Group across boards</div>
+        <div class="guide-card-copy">Create a group, turn on <strong>Group mode</strong>, then tick cards from any dashboard and open the collected view.</div>
+      </div>
+    </div>
+    <div class="guide-actions">
+      <button class="btn primary" id="guideBrowseTemplatesBtn" type="button">Browse templates</button>
+      <button class="btn" id="guideDismissBtn" type="button">Got it</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="maxModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div><div class="modal-title" id="maxModalTitle">Expanded view</div><div class="modal-sub" id="maxModalSub">Single block or grouped stats</div></div>
+      <button class="btn" id="closeMaxModal" type="button">Close</button>
+    </div>
+    <div class="modal-body"><div class="max-grid" id="maxGrid"></div></div>
+  </div>
+</div>
+
+<div id="persistenceBanner" style="position:fixed;right:18px;bottom:18px;z-index:140;max-width:420px;
+  border:1px solid rgba(255,255,255,.12);border-radius:18px;padding:12px 14px;
+  background:linear-gradient(180deg, rgba(12,20,42,.96), rgba(8,14,30,.96));
+  box-shadow:0 20px 50px rgba(0,0,0,.35);font-size:12px;color:rgba(238,243,255,.86);line-height:1.45;">
+  <div style="font-weight:800;margin-bottom:6px;">Persistence notice</div>
+  <div>This POC stores dashboard layouts, groups, and view state in local browser storage for persistence. Clear it any time for troubleshooting.</div>
+  <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+    <button class="btn" id="bannerClearStorageBtn" type="button" style="min-height:32px;padding:0 10px;">Clear storage</button>
+    <button class="btn" id="bannerDismissBtn" type="button" style="min-height:32px;padding:0 10px;">Hide</button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/gridstack@12.3.3/dist/gridstack-all.js"></script>
+<script src="./app.js" defer></script>
+<script src="./app-jira.js" defer></script>
+<script src="./app-audit.js" defer></script>
+
+<div id="loadingModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;align-items:center;justify-content:center;">
+  <div style="background:linear-gradient(180deg, rgba(12,28,43,.98), rgba(6,17,26,.98));border:1px solid rgba(255,255,255,0.12);border-radius:12px;padding:32px 40px;min-width:360px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.5);">
+    <div style="font-size:16px;font-weight:700;color:#ecf6ff;margin-bottom:8px;" id="loadingTitle">Loading data...</div>
+    <div style="font-size:12px;color:rgba(236,246,255,.6);margin-bottom:20px;" id="loadingSub">Fetching from JIRA MSP</div>
+    <div style="background:rgba(255,255,255,0.08);border-radius:6px;height:8px;overflow:hidden;">
+      <div id="loadingBar" style="background:linear-gradient(90deg,#4fa7dc,#79d3a6);height:100%;width:0%;border-radius:6px;transition:width 0.3s ease;"></div>
+    </div>
+    <div id="loadingPercent" style="font-size:11px;color:rgba(236,246,255,.5);margin-top:8px;">0%</div>
+  </div>
+</div>
+
+
+<div id="templatePreviewModal" class="tp-modal">
+  <div class="tp-modal-box">
+    <button class="tp-modal-close" onclick="document.getElementById('templatePreviewModal').style.display='none';document.body.classList.remove('modal-open')">&times;</button>
+    <h2 id="tpModalTitle">Template Preview</h2>
+    <div id="tpModalBody"></div>
+  </div>
+</div>
+</body>
+</html>
